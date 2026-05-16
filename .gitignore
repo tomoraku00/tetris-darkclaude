@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .venv/
+# Claude Code ローカル設定
+.claude/
