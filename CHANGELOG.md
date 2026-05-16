@@ -4,6 +4,38 @@
 
 ---
 
+## v0.5（完了）
+
+**目標**: Plan モードの追加。LLM が実装せず手順を提示するだけのモードを `/plan` で切り替える。
+
+### 新規
+- `/plan` コマンド: Plan モードのトグル（揮発、再起動でリセット）
+- Plan モード ON 時の挙動:
+  - REPL プロンプトを `User [PLAN] > ` に切り替え
+  - system prompt を Plan モード専用に切り替え（実装禁止・計画提示のみ指示）
+  - `chat_turn()` 内で system メッセージを messages 先頭に挿入してから `ollama.chat()` へ送信
+- ツール呼び出しの 2 層防御:
+  - LLM 層: system prompt で write_file / bash を禁止と明示
+  - コード層: `dispatch()` に `plan_mode: bool = False` 引数を追加し、`write_file` / `bash` 呼び出しを `ERROR: <name> は Plan モード中は使用できません。/plan で通常モードに戻してください。` でブロック
+- 起動バナーのコマンド一覧に `/plan` を追加
+- `main.py` のバージョン表示を v0.5 に更新
+
+### 動作確認済み
+- 起動バナーに `v0.5` と表示される
+- `/plan` でプロンプトが `User [PLAN] > ` に変化
+- Plan モード中に「README.md を書き換えて」→ LLM が write_file を呼ばず計画だけ提示
+- Plan モード中に強制 write_file → `ERROR: write_file は Plan モード中は使用できません。...`
+- Plan モード中に bash 実行依頼 → LLM が拒否 or コード側で ERROR ブロック
+- Plan モード中に「main.py を読んで」→ read_file が正常動作
+- 再度 `/plan` でプロンプトが `User > ` に戻る
+- 再起動後は通常モードで起動（揮発確認）
+
+### 制限事項
+- Plan モードのまま再起動しても引き継がれない（揮発が仕様）
+- Plan モード中も `/model` / `/setmodel` は使用可能（制限対象外）
+
+---
+
 ## v0.4（完了）
 
 **目標**: grep / glob ツールの追加。LLM がプロジェクト内を自分で検索・参照できるようにする。

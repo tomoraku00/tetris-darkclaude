@@ -16,7 +16,15 @@ TOOL_SCHEMAS = [
     glob.SCHEMA,
 ]
 
-def dispatch(name: str, args: dict) -> str:
+_PLAN_BLOCKED = {"write_file", "bash"}
+
+
+def dispatch(name: str, args: dict, plan_mode: bool = False) -> str:
+    if plan_mode and name in _PLAN_BLOCKED:
+        return (
+            f"ERROR: {name} は Plan モード中は使用できません。"
+            "/plan で通常モードに戻してください。"
+        )
     if name not in _TOOLS:
         return f"ERROR: unknown tool '{name}'"
     try:

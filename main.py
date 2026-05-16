@@ -39,14 +39,26 @@ def get_installed_models() -> list[str]:
         return []
 
 
-def chat_turn(messages: list, user_input: str, model: str) -> None:
+_PLAN_SYSTEM_PROMPT = (
+    "あなたは現在 Plan モードです。実装は行わず、これから取るべき手順を"
+    "箇条書きで提示してください。ファイル書き込み（write_file）や bash 実行"
+    "は禁止されています。読み取り系ツール（read_file / grep / glob）のみ"
+    "使用可能です。"
+)
+
+
+def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = False) -> None:
     """Process one user input, including any tool-use loops."""
     messages.append({"role": "user", "content": user_input})
 
     while True:
+        send_messages = messages
+        if plan_mode:
+            send_messages = [{"role": "system", "content": _PLAN_SYSTEM_PROMPT}] + messages
+
         response = ollama.chat(
             model=model,
-            messages=messages,
+            messages=send_messages,
             tools=TOOL_SCHEMAS,
         )
         msg = response["message"]
@@ -64,7 +76,7 @@ def chat_turn(messages: list, user_input: str, model: str) -> None:
             args = call["function"]["arguments"]
             preview = str(args)[:80]
             print(f"  [tool] {name}({preview})")
-            result = dispatch(name, args)
+            result = dispatch(name, args, plan_mode=plan_mode)
             shown = result[:100] + ("..." if len(result) > 100 else "")
             print(f"  [result] {shown}")
             messages.append({
@@ -79,6 +91,7 @@ def main():
     config = load_config()
     model: str = config.get("model", DEFAULT_MODEL)
     messages: list = []
+    plan_mode: bool = False
 
     # ASCII art logo (ASCII characters only, codepage非依存)
     print(r"""
@@ -87,15 +100,16 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.4
+                                             v0.5
 """)
     print(f"Model: {model}")
-    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>")
+    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
     print()
 
     try:
         while True:
-            user_input = input("User > ").strip()
+            prompt = "User [PLAN] > " if plan_mode else "User > "
+            user_input = input(prompt).strip()
             if not user_input:
                 continue
 
@@ -149,7 +163,14 @@ def main():
                         print(f"Switched to: {model} (saved to config.json)")
                 continue
 
-            chat_turn(messages, user_input, model)
+            # Plan モードトグル
+            if user_input == "/plan":
+                plan_mode = not plan_mode
+                status = "ON" if plan_mode else "OFF"
+                print(f"Plan モード: {status}")
+                continue
+
+            chat_turn(messages, user_input, model, plan_mode=plan_mode)
 
     except KeyboardInterrupt:
         print("\nCtrl+C detected. Exiting safely.")
