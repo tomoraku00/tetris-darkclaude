@@ -313,3 +313,23 @@ DarkClaude / LightClaude を将来配布する際の名称方針。
 - 開発中: `DarkClaude` / `LightClaude` のまま
 - 配布検討段階: 内部コード名やロゴで Crown 系の世界観を準備
 - 公開配布時: 必要に応じて Crown 系に正式リブランド
+
+### 6. モデル別のツール対応性メモ
+
+実運用で確認したモデルごとの tool calling 動作記録。現時点で実装変更は行わない。
+
+| モデル | tool calling | 状態 |
+|---|---|---|
+| qwen3:8b | 安定 | v0.2 / v0.3 で検証済み |
+| qwen2.5-coder:7b | 不安定 | 後述 |
+| deepseek-r1:7b | 未検証 | — |
+
+**qwen2.5-coder:7b の挙動詳細**:
+- tool_calls フィールドではなく content の JSON テキストとしてツール呼び出しを出力することがある
+- 原因推定: coder 系モデルが tool calling format で十分に訓練されていない可能性
+- 現状の対処: ツール使用が必要な作業は qwen3:8b 推奨
+
+**将来の対処候補**:
+- `/model` や `/setmodel` でツール対応が不安定なモデルに切り替えた際に警告を表示
+- deepseek-r1:7b 等の他モデルも同様の検証が必要
+- content JSON フォールバックパーサーの実装（v0.6 権限承認システムと合わせて検討）
