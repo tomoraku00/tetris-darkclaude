@@ -135,7 +135,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.5.1
+                                             v0.5.2
 """)
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")

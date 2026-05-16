@@ -27,7 +27,7 @@ SCHEMA = {
                 },
                 "path": {
                     "type": "string",
-                    "description": "検索開始ディレクトリ（省略時は '.'）"
+                    "description": "検索対象のファイルまたはディレクトリ（省略時は '.'）。ファイルを指定するとそのファイルのみ検索する。"
                 },
                 "include": {
                     "type": "string",
@@ -77,6 +77,23 @@ def _is_binary(path: Path) -> bool:
         return True
 
 
+def _search_file(file: Path, regex, matches: list[str]) -> bool:
+    """ファイルを検索して matches に追加する。上限到達なら True を返す。"""
+    if _is_binary(file):
+        return False
+    try:
+        text = file.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    rel = file.relative_to(PROJECT_ROOT)
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if regex.search(line):
+            matches.append(f"{rel}:{lineno}:{line[:_MAX_LINE]}")
+            if len(matches) >= _MAX_MATCHES:
+                return True
+    return False
+
+
 def run(
     pattern: str,
     path: str = ".",
@@ -87,9 +104,7 @@ def run(
     if not base.is_relative_to(PROJECT_ROOT):
         return f"ERROR: path outside project root: {path}"
     if not base.exists():
-        return f"ERROR: path not found: {path}"
-    if not base.is_dir():
-        return f"ERROR: not a directory: {path}"
+        return f"ERROR: not found: {path}"
 
     try:
         flags = re.IGNORECASE if case_insensitive else 0
@@ -100,23 +115,16 @@ def run(
     matches: list[str] = []
     truncated = False
 
-    files = _rglob_filtered(base, include) if include else _walk(base)
-    for file in files:
-        if _is_binary(file):
-            continue
-        try:
-            text = file.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            continue
-        rel = file.relative_to(PROJECT_ROOT)
-        for lineno, line in enumerate(text.splitlines(), 1):
-            if regex.search(line):
-                matches.append(f"{rel}:{lineno}:{line[:_MAX_LINE]}")
-                if len(matches) >= _MAX_MATCHES:
-                    truncated = True
-                    break
-        if truncated:
-            break
+    if base.is_file():
+        truncated = _search_file(base, regex, matches)
+    elif base.is_dir():
+        files = _rglob_filtered(base, include) if include else _walk(base)
+        for file in files:
+            if _search_file(file, regex, matches):
+                truncated = True
+                break
+    else:
+        return f"ERROR: not a directory: {path}"
 
     if not matches:
         return "(no matches)"

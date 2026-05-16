@@ -4,6 +4,27 @@
 
 ---
 
+## v0.5.2（完了）
+
+**目標**: grep ツールが単一ファイル指定を受け付けるよう拡張。Unix の `grep pat file.py` と同じ感覚で使えるようにする。
+
+### 変更
+- `tools/grep.py` の `run()` を file/dir 二分岐構造に書き直し
+  - `path` がファイル → そのファイル 1 件だけを検索
+  - `path` がディレクトリ → 既存通り再帰走査（互換性維持）
+  - `path` が存在しない → `ERROR: not found: <path>`（メッセージも統一）
+- 検索ロジックを `_search_file(file, regex, matches)` ヘルパーに抽出し重複を排除
+- SCHEMA の `path` 引数の説明を「ファイルまたはディレクトリ」に更新
+- `main.py` のバージョン表示を v0.5.2 に更新
+
+### 動作確認済み
+- `grep('def ', path='main.py')` → `main.py:N:def ...` 形式で def 行が返る
+- `grep('def run', include='tools/*.py')` → 既存通りディレクトリ走査が動く（互換性）
+- `grep('test', path='foo.py')` → `ERROR: not found: foo.py`
+- `grep('test', path='../Windows')` → `ERROR: path outside project root: ...`
+
+---
+
 ## v0.5.1（完了）
 
 **目標**: ツール呼び出しの無限リトライ抑制。LLM が同じエラーを繰り返し呼び続ける挙動を 2 段の安全機構でブロックする。
