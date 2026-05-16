@@ -22,6 +22,13 @@ def load_config() -> dict:
     return {"model": DEFAULT_MODEL}
 
 
+def save_config(config: dict) -> None:
+    _CONFIG_PATH.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def get_installed_models() -> list[str]:
     try:
         resp = ollama.list()
@@ -80,10 +87,10 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.3.2
+                                             v0.3.3
 """)
     print(f"Model: {model}")
-    print("Commands: /exit /quit /bye  |  /models  |  /model <name>")
+    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>")
     print()
 
     try:
@@ -123,6 +130,23 @@ def main():
                     else:
                         model = name
                         print(f"Switched to: {model}")
+                continue
+
+            # モデル永続切り替え（config.json に書き込み）
+            if user_input == "/setmodel" or user_input.startswith("/setmodel "):
+                name = user_input[10:].strip() if user_input.startswith("/setmodel ") else ""
+                if not name:
+                    print("Usage: /setmodel <name>")
+                else:
+                    installed = get_installed_models()
+                    if name not in installed:
+                        print(f"Warning: '{name}' not found. config.json is unchanged.")
+                        if installed:
+                            print(f"Installed: {', '.join(installed)}")
+                    else:
+                        model = name
+                        save_config({"model": model})
+                        print(f"Switched to: {model} (saved to config.json)")
                 continue
 
             chat_turn(messages, user_input, model)

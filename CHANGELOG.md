@@ -4,6 +4,31 @@
 
 ---
 
+## v0.3.3（完了）
+
+**目標**: モデル設定の永続化コマンド追加。
+
+### 新規
+- `save_config(config: dict)`: config.json に設定を書き込むヘルパー（`ensure_ascii=False` / `indent=2`）
+- `/setmodel <name>` コマンド: セッションのモデルを変更し、config.json の `"model"` フィールドも同時に書き換える
+  - 存在しないモデル名の場合は警告を出して config.json を変更しない
+  - 引数なしの場合は使い方を表示
+- 起動バナーのコマンド一覧に `/setmodel <name>` を追加
+- バージョン表示を v0.3.3 に更新
+
+### /model と /setmodel の使い分け
+| コマンド | セッション | config.json |
+|---|---|---|
+| `/model <name>` | 変更 | 変更しない（揮発）|
+| `/setmodel <name>` | 変更 | 書き換える（永続）|
+
+### 動作確認済み
+- `/setmodel qwen2.5-coder:7b` → config.json の model が書き換わり次回起動時も維持される
+- `/setmodel nonexistent:latest` → 警告表示、config.json は変更されない
+- `/setmodel`（引数なし）→ `Usage: /setmodel <name>` を表示
+
+---
+
 ## v0.3.2（完了）
 
 **目標**: モデル切り替え機能の追加。
