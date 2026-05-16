@@ -1,3 +1,4 @@
+import collections
 import sys
 import json
 import subprocess
@@ -51,6 +52,9 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
     """Process one user input, including any tool-use loops."""
     messages.append({"role": "user", "content": user_input})
 
+    call_count = 0
+    recent_calls: collections.deque = collections.deque(maxlen=3)
+
     while True:
         send_messages = messages
         if plan_mode:
@@ -71,9 +75,36 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
             return
 
         # ツール呼び出しを順に実行
+        limit_reached = False
         for call in tool_calls:
             name = call["function"]["name"]
             args = call["function"]["arguments"]
+
+            # ② ターン内総呼び出し上限（25回）
+            call_count += 1
+            if call_count > 25:
+                error = (
+                    "ERROR: このターンの tool_call 回数が上限（25回）に達しました。"
+                    "タスクを分割するか、再度指示してください。"
+                )
+                print(f"  [tool] {name}(...) → 上限到達でブロック")
+                messages.append({"role": "tool", "content": error, "name": name})
+                limit_reached = True
+                break
+
+            # ① 同一呼び出し連続検出（直前 3 回が同一なら 4 回目以降をブロック）
+            call_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
+            if len(recent_calls) == 3 and all(k == call_key for k in recent_calls):
+                error = (
+                    "ERROR: 同じツール呼び出しが3回繰り返されました。"
+                    "引数を変えるか、別のアプローチを試してください。"
+                )
+                print(f"  [tool] {name}(...) → 連続同一呼び出しでブロック")
+                messages.append({"role": "tool", "content": error, "name": name})
+                recent_calls.append(call_key)
+                continue
+            recent_calls.append(call_key)
+
             preview = str(args)[:80]
             print(f"  [tool] {name}({preview})")
             result = dispatch(name, args, plan_mode=plan_mode)
@@ -84,6 +115,10 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
                 "content": result,
                 "name": name,
             })
+
+        if limit_reached:
+            print("\n[安全機構] ターン内 tool_call 上限（25回）に達しました。処理を中断します。\n")
+            return
         # 次のループへ（モデルにツール結果を渡して続きを生成させる）
 
 
@@ -100,7 +135,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.5
+                                             v0.5.1
 """)
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
