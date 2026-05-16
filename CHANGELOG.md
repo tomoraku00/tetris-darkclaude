@@ -4,6 +4,36 @@
 
 ---
 
+## v0.4（完了）
+
+**目標**: grep / glob ツールの追加。LLM がプロジェクト内を自分で検索・参照できるようにする。
+
+### 新規
+- `tools/grep.py`: 正規表現による内容検索ツール
+  - パラメータ: `pattern`（必須）, `path`（省略時 `.`）, `include`（glob フィルタ）, `case_insensitive`（省略時 false）
+  - 出力: `パス:行番号:マッチ行` 形式、最大 100 件・1 行 200 文字・合計 4000 文字でキャップ
+  - バイナリファイルは先頭 1KB の null バイト判定でスキップ
+- `tools/glob.py`: glob パターンによるファイルパス検索ツール
+  - パラメータ: `pattern`（必須）, `path`（省略時 `.`）
+  - 出力: マッチしたパスの一覧（PROJECT_ROOT 相対）、最大 200 件・4000 文字でキャップ
+- 両ツール共通: 除外ディレクトリ固定（`.git`, `node_modules`, `__pycache__`, `.venv`, `venv`, `.mypy_cache`, `.pytest_cache`）、隠しディレクトリ（`.` 始まり）をスキップ
+- `tools/registry.py` に grep / glob を登録
+- `main.py` のバージョン表示を v0.4 に更新
+
+### 動作確認済み
+- `main.py に def が何個ある？` → `main.py:XX:def ...` 形式で列挙される
+- `tools/ 配下の .py で SCHEMA を検索して` → include フィルタで tools/*.py に絞られた結果
+- `error を大文字小文字無視で探して` → case_insensitive マッチ
+- 存在しない文字列を検索 → `(no matches)`
+- `プロジェクト内の .py ファイルを列挙して` → 全 .py ファイルのパス一覧
+- `../Windows を検索して` → `ERROR: path outside project root: ...`
+
+### 制限事項
+- `.gitignore` の内容に基づく除外は未対応（固定除外ディレクトリのみ）
+- ディレクトリを対象とした glob（ファイルのみ返す仕様）
+
+---
+
 ## v0.3.3（完了）
 
 **目標**: モデル設定の永続化コマンド追加。

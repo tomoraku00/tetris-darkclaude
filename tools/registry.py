@@ -1,15 +1,19 @@
-from tools import bash, read_file, write_file
+from tools import bash, glob, grep, read_file, write_file
 
 _TOOLS = {
-    "read_file": read_file.run,
+    "read_file":  read_file.run,
     "write_file": write_file.run,
-    "bash": bash.run,
+    "bash":       bash.run,
+    "grep":       grep.run,
+    "glob":       glob.run,
 }
 
 TOOL_SCHEMAS = [
     read_file.SCHEMA,
     write_file.SCHEMA,
     bash.SCHEMA,
+    grep.SCHEMA,
+    glob.SCHEMA,
 ]
 
 def dispatch(name: str, args: dict) -> str:

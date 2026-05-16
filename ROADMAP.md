@@ -47,8 +47,8 @@ User --> messages[] --> LLM --> response
 | v0.1 | 最小 REPL（Ollama と会話のみ） | s00 相当（ループのみ） | 完了 |
 | v0.2 | ツール基盤 + read_file / write_file | s01 + s02 | 完了 |
 | v0.3 | bash 実行ツール | s02 拡張 | 完了 |
-| v0.4 | grep / glob ツール | s02 拡張 | 開発中 |
-| v0.5 | Plan モード（TodoWrite 風） | s03 | 未着手 |
+| v0.4 | grep / glob ツール | s02 拡張 | 完了 |
+| v0.5 | Plan モード（TodoWrite 風） | s03 | 開発中 |
 | v0.6 | 権限承認システム（Approve/Reject） | （独自） | 未着手 |
 | v0.7 | **軽量会話ログ収集（LoRA 訓練データの土台）** | s06 簡易版 | 未着手 |
 | v0.8 | **LoRA 訓練環境構築（Unsloth + データ整形パイプライン）** | （独自） | 未着手 |
