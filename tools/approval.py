@@ -27,6 +27,24 @@ def request_approval(tool_name: str, args: dict) -> str:
             f"Always allow writes to '{path}'",
             "Deny",
         ]
+    elif tool_name == "str_replace":
+        path = args.get("path", "")
+        old_str = args.get("old_str", "")
+        new_str = args.get("new_str", "")
+
+        def _trunc(s: str, limit: int = 500) -> str:
+            if len(s) > limit:
+                return s[:limit] + f"...省略 ({len(s)} chars)"
+            return s
+
+        print(f"    Path: {path}")
+        print(f"    old_str: {_trunc(old_str)}")
+        print(f"    new_str: {_trunc(new_str)}")
+        choices = [
+            "Allow once",
+            f"Always allow writes to '{path}'",
+            "Deny",
+        ]
     elif tool_name == "bash":
         command = args.get("command", "").strip()
         print(f"    Command: {command}")

@@ -152,6 +152,36 @@ _PLAN_SYSTEM_PROMPT = (
 )
 
 _SYSTEM_PROMPT = (
+    "## ツール呼び出しのプロトコル\n\n"
+    "ツール呼び出しは必ず tool_calls フィールドで行うこと。\n"
+    "message content に JSON 形式のツール呼び出しテキストを出力しては\n"
+    "ならない（実ツール呼び出しが発火せず、ユーザーは混乱する）。\n\n"
+    "ツールを呼び出すべきタイミングでは、応答テキストを返すのではなく\n"
+    "必ずツールを呼び出すこと。\n\n"
+    "## ファイル編集の手順\n\n"
+    "ファイルを編集する前に read_file で該当箇所を確認すること。\n"
+    "既存内容を確認せずに編集を行ってはならない。\n\n"
+    "既存ファイルへの局所的な変更（関数 1 つの修正、docstring 追加、\n"
+    "数行の追加・変更など）には str_replace を使うこと。\n"
+    "write_file はファイル全体を上書きするため、局所編集に使うと\n"
+    "意図しない損失が発生する。\n\n"
+    "write_file は以下の場合のみ使うこと:\n"
+    "- 新規ファイルの作成\n"
+    "- 明示的にファイル全体を置き換える場合\n\n"
+    "str_replace で old_str が見つからない、または複数箇所に存在する\n"
+    "場合はエラーとなる。read_file で対象箇所を確認し、十分なコンテキストを\n"
+    "含めた old_str を指定すること。\n\n"
+    "## ツール実行失敗時の振る舞い\n\n"
+    "ツール実行が失敗した場合、原因を断定的に推測してユーザーに\n"
+    "報告してはならない。\n\n"
+    "複数の可能性が考えられる場合は、確証のない推測を「対処法」として\n"
+    "箇条書きにせず、状況を簡潔に説明してユーザーまたは追加のツール\n"
+    "呼び出しによる切り分けを促すこと。\n\n"
+    "特に bash の timeout エラーでは、複数の可能性（時間不足、\n"
+    "ネットワーク、プロセス停止、コマンド誤り等）があるため、\n"
+    "これらを断定的に列挙せず、まずは timeout を増やして再試行する\n"
+    "選択肢を提案すること。\n\n"
+    "---\n\n"
     "## ユーザー承認について\n\n"
     "write_file と bash の実行前に、ユーザーは承認プロンプトを受け取る。\n"
     "ユーザーが Deny / Ctrl+C を選んだ場合、tool_result は\n"
@@ -287,8 +317,8 @@ def chat_turn(
                 session_log.tool_call(name, args)
 
             # 承認ゲート（Plan モード OFF かつ副作用ツールのみ）
-            if not plan_mode and name in ("write_file", "bash"):
-                if name == "write_file":
+            if not plan_mode and name in ("write_file", "bash", "str_replace"):
+                if name in ("write_file", "str_replace"):
                     key = args.get("path", "")
                     allowed_set = allowed_write_paths
                 else:

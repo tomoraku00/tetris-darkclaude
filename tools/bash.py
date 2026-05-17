@@ -35,7 +35,12 @@ SCHEMA = {
                 "command": {
                     "type": "string",
                     "description": "実行する PowerShell コマンド"
-                }
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "実行時間上限（秒）。デフォルト 120、最大 600。長時間 I/O（ollama pull 等）の場合は明示的に指定すること",
+                    "default": 120
+                },
             },
             "required": ["command"]
         }
@@ -43,10 +48,12 @@ SCHEMA = {
 }
 
 
-def run(command: str) -> str:
+def run(command: str, timeout: int = 120) -> str:
     for pattern in _BLOCKED:
         if pattern.search(command):
             return f"ERROR: blocked command: {pattern.pattern}"
+
+    timeout = max(1, min(timeout, 600))
 
     try:
         proc = subprocess.run(
@@ -55,11 +62,14 @@ def run(command: str) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=30,
+            timeout=timeout,
             cwd=str(PROJECT_ROOT),
         )
     except subprocess.TimeoutExpired:
-        return "ERROR: timeout after 30s"
+        return (
+            f"ERROR: timeout after {timeout}s. "
+            "If the command requires more time, retry with a larger timeout argument (max 600)."
+        )
     except Exception as e:
         return f"ERROR: {e}"
 

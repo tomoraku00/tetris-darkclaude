@@ -1,11 +1,12 @@
-from tools import bash, glob, grep, read_file, write_file
+from tools import bash, glob, grep, read_file, str_replace, write_file
 
 _TOOLS = {
-    "read_file":  read_file.run,
-    "write_file": write_file.run,
-    "bash":       bash.run,
-    "grep":       grep.run,
-    "glob":       glob.run,
+    "read_file":   read_file.run,
+    "write_file":  write_file.run,
+    "bash":        bash.run,
+    "grep":        grep.run,
+    "glob":        glob.run,
+    "str_replace": str_replace.run,
 }
 
 TOOL_SCHEMAS = [
@@ -14,6 +15,7 @@ TOOL_SCHEMAS = [
     bash.SCHEMA,
     grep.SCHEMA,
     glob.SCHEMA,
+    str_replace.SCHEMA,
 ]
 
 _PLAN_BLOCKED = {"write_file", "bash"}
