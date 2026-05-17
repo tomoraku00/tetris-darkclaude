@@ -51,13 +51,16 @@ User --> messages[] --> LLM --> response
 
 ## 現在のステータス
 
-### 完了（v0.6 まで）
+### 完了（v0.6.5 まで）
 - **v0.1〜v0.3**: REPL、ツール基盤（read/write/bash）
 - **v0.4**: grep / glob ツール
 - **v0.5〜v0.5.3.1**: Plan モード、無限リトライ抑制、grep 単一ファイル対応、作業時間表示
 - **v0.6**: 権限承認システム（write_file / bash の実行前に承認プロンプト）
   - `tools/approval.py`: `request_approval()` が 1回許可 / 常に許可 / 拒否 を返す
   - 許可状態は揮発（セッション内のみ、再起動でリセット）
+- **v0.6.1〜v0.6.5**: 承認 TUI 化、deny メッセージ polish、モデルフォールバック、複数行ペースト、思考モード制御
+  - `/think [show|hide|off]`: qwen3 の思考ブロック表示を 3 値で制御（config.json に永続化）
+  - show=思考表示（既定）、hide=思考非表示・速度同等、off=思考無効・高速
 
 ### 次のステップ
 - **v0.7**: 軽量会話ログ収集（LoRA 訓練データの土台）

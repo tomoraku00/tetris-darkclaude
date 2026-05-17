@@ -19,7 +19,10 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 DEFAULT_MODEL = "qwen3:8b"
 FALLBACK_MODEL = "qwen3:8b"
+DEFAULT_THINK_MODE = "show"
+THINK_MODES = ("show", "hide", "off")
 _CONFIG_PATH = Path(__file__).parent / "config.json"
+_think_fallback_warned: list[bool] = [False]
 
 
 def load_config() -> dict:
@@ -86,6 +89,45 @@ class ThinkingIndicator:
         print(_CLEAR_LINE, end="", flush=True)
 
 
+class ThinkStripper:
+    """Strip <think>...</think> blocks from a stream of text chunks."""
+
+    def __init__(self) -> None:
+        self.in_think = False
+        self.buffer = ""
+
+    def feed(self, chunk: str) -> str:
+        self.buffer += chunk
+        out: list[str] = []
+        while self.buffer:
+            if self.in_think:
+                end = self.buffer.find("</think>")
+                if end == -1:
+                    keep = min(len(self.buffer), 7)
+                    self.buffer = self.buffer[-keep:] if keep else ""
+                    return "".join(out)
+                self.buffer = self.buffer[end + len("</think>"):]
+                self.in_think = False
+            else:
+                start = self.buffer.find("<think>")
+                if start == -1:
+                    keep = min(len(self.buffer), 6)
+                    out.append(self.buffer[:-keep] if keep else self.buffer)
+                    self.buffer = self.buffer[-keep:] if keep else ""
+                    return "".join(out)
+                out.append(self.buffer[:start])
+                self.buffer = self.buffer[start + len("<think>"):]
+                self.in_think = True
+        return "".join(out)
+
+    def flush(self) -> str:
+        if self.in_think:
+            return ""
+        out = self.buffer
+        self.buffer = ""
+        return out
+
+
 _PLAN_SYSTEM_PROMPT = (
     "あなたは現在 Plan モードです。実装は行わず、これから取るべき手順を"
     "箇条書きで提示してください。ファイル書き込み（write_file）や bash 実行"
@@ -119,6 +161,7 @@ def chat_turn(
     user_input: str,
     model: str,
     plan_mode: bool = False,
+    think_mode: str = "show",
     allowed_write_paths: set[str] | None = None,
     allowed_bash_commands: set[str] | None = None,
 ) -> None:
@@ -138,21 +181,46 @@ def chat_turn(
         system_content = _SYSTEM_PROMPT
         if plan_mode:
             system_content = _PLAN_SYSTEM_PROMPT + "\n\n" + _SYSTEM_PROMPT
+        if think_mode == "off":
+            system_content += "\n\n/no_think"
         send_messages = [{"role": "system", "content": system_content}] + messages
 
         with ThinkingIndicator():
-            response = ollama.chat(
-                model=model,
-                messages=send_messages,
-                tools=TOOL_SCHEMAS,
-            )
+            if think_mode == "off":
+                try:
+                    response = ollama.chat(
+                        model=model,
+                        messages=send_messages,
+                        tools=TOOL_SCHEMAS,
+                        think=False,
+                    )
+                except TypeError:
+                    if not _think_fallback_warned[0]:
+                        print("[warn] ollama-python does not support 'think' param, "
+                              "falling back to /no_think prompt only")
+                        _think_fallback_warned[0] = True
+                    response = ollama.chat(
+                        model=model,
+                        messages=send_messages,
+                        tools=TOOL_SCHEMAS,
+                    )
+            else:
+                response = ollama.chat(
+                    model=model,
+                    messages=send_messages,
+                    tools=TOOL_SCHEMAS,
+                )
         msg = response["message"]
         messages.append(msg)
 
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
             # 通常のテキスト応答 → ターン終了
-            print(f"\nDarkClaude: {msg.get('content', '')}\n")
+            content = msg.get("content", "")
+            if think_mode == "hide":
+                stripper = ThinkStripper()
+                content = stripper.feed(content) + stripper.flush()
+            print(f"\nDarkClaude: {content}\n")
             print(f"  (合計 {time.monotonic() - turn_start:.1f}s)")
             return
 
@@ -243,6 +311,12 @@ def chat_turn(
 def main():
     config = load_config()
     model: str = config.get("model", DEFAULT_MODEL)
+    think_mode: str = config.get("think_mode", DEFAULT_THINK_MODE)
+    if think_mode not in THINK_MODES:
+        print(f"[warn] Invalid think_mode '{think_mode}' in config.json, falling back to 'show'.")
+        think_mode = DEFAULT_THINK_MODE
+    if "think_mode" not in config or config.get("think_mode") != think_mode:
+        save_config({"model": model, "think_mode": think_mode})
     messages: list = []
     plan_mode: bool = False
     allowed_write_paths: set[str] = set()
@@ -255,7 +329,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.6.4
+                                             v0.6.5
 """)
 
     # 起動時モデル存在チェック（Ollama 未起動時は例外を捕捉してスキップ）
@@ -276,12 +350,12 @@ def main():
             print(f"[warn] Configured model '{model}' not found in Ollama.")
             print(f"[warn] Falling back to '{FALLBACK_MODEL}' and updating config.json.")
             model = FALLBACK_MODEL
-            save_config({"model": model})
+            save_config({"model": model, "think_mode": think_mode})
     except Exception:
         pass  # Ollama 未起動等 → チェックをスキップ、最初のチャットでエラーが出る
 
     print(f"Model: {model}")
-    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
+    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan  |  /think [show|hide|off]")
     print()
 
     _bindings = KeyBindings()
@@ -304,7 +378,9 @@ def main():
 
     try:
         while True:
-            prompt_str = "User [PLAN] > " if plan_mode else "User > "
+            think_tag = "" if think_mode == "show" else (" [HIDE]" if think_mode == "hide" else " [NOTHINK]")
+            plan_tag = " [PLAN]" if plan_mode else ""
+            prompt_str = f"User{plan_tag}{think_tag} > "
             user_input = _session.prompt(prompt_str).strip()
             if not user_input:
                 continue
@@ -355,7 +431,7 @@ def main():
                             print(f"Installed: {', '.join(installed)}")
                     else:
                         model = name
-                        save_config({"model": model})
+                        save_config({"model": model, "think_mode": think_mode})
                         print(f"Switched to: {model} (saved to config.json)")
                 continue
 
@@ -366,9 +442,27 @@ def main():
                 print(f"Plan モード: {status}")
                 continue
 
+            # 思考モード切り替え
+            if user_input == "/think" or user_input.startswith("/think "):
+                arg = user_input[7:].strip() if user_input.startswith("/think ") else ""
+                if not arg:
+                    idx = THINK_MODES.index(think_mode)
+                    new_mode = THINK_MODES[(idx + 1) % len(THINK_MODES)]
+                elif arg in THINK_MODES:
+                    new_mode = arg
+                else:
+                    print(f"ERROR: invalid think mode '{arg}'. Use: show | hide | off")
+                    continue
+                old_mode = think_mode
+                think_mode = new_mode
+                save_config({"model": model, "think_mode": think_mode})
+                print(f"Think mode: {think_mode.upper()} (was {old_mode.upper()})")
+                continue
+
             chat_turn(
                 messages, user_input, model,
                 plan_mode=plan_mode,
+                think_mode=think_mode,
                 allowed_write_paths=allowed_write_paths,
                 allowed_bash_commands=allowed_bash_commands,
             )

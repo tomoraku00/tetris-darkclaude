@@ -4,6 +4,50 @@
 
 ---
 
+## v0.6.5（完了）
+
+**目標**: qwen3 思考モードの 3 値制御。show（表示）/ hide（非表示）/ off（思考なし）を `/think` コマンドで切り替え、config.json に永続化する。
+
+### 新規
+- `main.py` に `DEFAULT_THINK_MODE = "show"` / `THINK_MODES = ("show", "hide", "off")` 定数を追加
+- `ThinkStripper` クラスを追加（`<think>...</think>` ブロックをチャンク単位で除去）
+- `/think` コマンドを追加
+  - 引数なし: show → hide → off → show の巡回
+  - `/think show|hide|off`: 直接指定
+  - 不正引数: `ERROR: invalid think mode '...'. Use: show | hide | off`
+  - 変更時に config.json 即時更新 + `Think mode: HIDE (was SHOW)` 形式で確認表示
+- `chat_turn()` に `think_mode: str = "show"` 引数を追加
+
+### 変更
+- **off モード**: system prompt 末尾に `\n\n/no_think` を追記 + `ollama.chat(think=False)` を渡す
+  - `TypeError` の場合（旧 ollama-python）: `[warn]` ログを 1 回だけ表示してリトライ（`_think_fallback_warned` グローバルフラグで制御）
+- **hide モード**: 最終テキスト応答を `ThinkStripper.feed() + flush()` でフィルタしてから表示
+- **show モード**: 既存動作のまま（`<think>` ブロックをそのまま表示）
+- プロンプト表示: `User >` / `User [HIDE] > ` / `User [NOTHINK] > ` で現モードを表記（Plan モードとの組み合わせ: `User [PLAN] [NOTHINK] > ` 等）
+- config.json に `think_mode` キーを追加、起動時にキーが無ければサイレントマイグレーション（警告なし）
+- 不正値が config.json に入っていた場合は `[warn]` + `"show"` にフォールバック + 上書き
+- `/setmodel` や起動時モデルフォールバックの `save_config()` 呼び出しに `think_mode` を含めるよう更新
+- バナー表示を v0.6.5 に更新
+
+### 動作確認済み
+- バナーに `v0.6.5` と表示
+- 起動直後 config に `think_mode` キーなし → "show" が書き込まれる、警告なし、プロンプトは `User > `
+- `/think` 巡回（show → hide → off → show）と直接指定（`/think hide`）
+- 不正引数（`/think foobar`）→ ERROR 表示、モード変更なし
+- show モードで質問 → `<think>` ブロックが画面に出る
+- hide モードで質問 → `<think>` ブロックが画面に出ない、答えだけ出る
+- off モードで質問 → `<think>` ブロックがそもそも生成されない、応答時間が速い
+- hide モードで複雑な質問 → `<think>` 部分が表示されず本体応答だけ表示
+- off モード + Plan モード → `User [PLAN] [NOTHINK] > ` 表示
+- 再起動 → 直前のモードが config.json から復元
+- config.json の `think_mode` を "invalid" に書き換えて起動 → 警告ログ + "show" にフォールバック + 上書き
+
+### 制限事項
+- `<think>` ブロックのたたみ込み表示（「思考中 12s を展開」）→ TUI 化前提、将来検討
+- タスク種別による自動 think on/off 判定 → 未実装
+
+---
+
 ## v0.6.4（完了）
 
 **目標**: 複数行ペースト対応と手動改行（`\ + Enter`）の追加。REPL の入力受付を `input()` から prompt_toolkit の `PromptSession` に置き換え、複数行入力・入力履歴・行内編集を実現する。
