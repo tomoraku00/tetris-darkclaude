@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 # Claude Code ローカル設定
 .claude/
+# v0.7 会話ログ
+data/

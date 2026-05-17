@@ -4,6 +4,70 @@
 
 ---
 
+## v0.7（完了）
+
+**目標**: 軽量会話ログ収集。会話・ツール呼び出し・モデル応答をセッション単位で JSONL ファイルに保存し、v0.8 以降の LoRA 訓練データの土台を作る。
+
+### 新規
+- `session_log.py`: `SessionLog` クラスを新規追加
+  - コンストラクタ: `enabled`, `base_dir`, `dc_version`, `model`, `plan_mode`, `think_mode`, `system_prompt` を受け取り、`session_id = secrets.token_hex(4)`（8桁 hex）を生成
+  - 状態管理: `_enabled` / `_dead` の 2 フラグ（ファイル書き込み失敗時は `_dead = True` にしてサイレントに無視）
+  - ファイル: `data/conversations/YYYYMMDD-HHMMSS_<session_id>.jsonl` を追記モード・UTF-8 で保存
+  - タイムスタンプ: UTC ミリ秒精度（`2026-05-17T10:23:45.123Z` 形式）
+  - `json.dumps(ensure_ascii=False, default=str)` で非シリアライズ可能オブジェクトも安全に文字列化
+  - イベントメソッド: `session_start()`, `user_message()`, `llm_call()`, `tool_call()`, `approval()`, `tool_result()`, `assistant_message()`, `close()`
+  - 制御メソッド: `toggle()`, `set_enabled()`, `update_context(plan_mode, think_mode)`
+- `/logging` コマンド: セッション内のログ収集トグル（揮発）
+  - ON 時: `ログ収集: ON (data/conversations/...jsonl)` でファイルパスも表示
+  - OFF 時: `ログ収集: OFF`
+- `data/conversations/` ディレクトリ: SessionLog が初回書き込み時に `mkdir(parents=True, exist_ok=True)` で自動作成
+- `.gitignore` に `data/` を追記（ログファイルをコミット除外）
+
+### 変更
+- `_build_system_prompt(plan_mode, think_mode) -> str` ヘルパーを追加（chat_turn() 内のインライン構築を切り出し）
+- `chat_turn()` に `session_log: SessionLog | None = None` 引数を追加
+  - ログポイント: user_message → llm_call（while ループ毎）→ tool_call → approval → tool_result → assistant_message
+  - `llm_call` の `latency_ms`: `time.monotonic()` で ollama.chat() 前後を計測
+  - `assistant_message` の `total_latency_ms`: `turn_start` からターン終了まで
+- `main()` で SessionLog を初期化し、ロゴ表示前に `session_start()` を呼び出し
+- `/plan` / `/think` 変更時に `session_log.update_context()` を呼び出してコンテキスト同期
+- 終了時に `session_log.close(reason)`: `/exit /quit /bye` → `"user_exit"`, Ctrl+C/D → `"ctrl_c"`
+- コマンドヘルプに `/logging` を追加
+- バナー表示を v0.7 に更新
+
+### ログイベント形式（1行1JSON）
+| type | 主要フィールド |
+|---|---|
+| `session_start` | dc_version, model, plan_mode, think_mode, logging_enabled, system_prompt, session_id |
+| `user_message` | content |
+| `llm_call` | request_messages, response (msg dict), latency_ms, plan_mode, think_mode |
+| `tool_call` | tool, args |
+| `approval` | tool, args, decision |
+| `tool_result` | tool, args, content, is_user_denied |
+| `assistant_message` | content, total_latency_ms |
+| `session_end` | reason, session_id |
+
+### 動作確認済み
+- バナーに `v0.7` と表示
+- 起動直後に `data/conversations/YYYYMMDD-HHMMSS_<id>.jsonl` が自動生成
+- 1 ターン（質問 → 応答）後、JSONL に session_start → user_message → llm_call → assistant_message → session_end（終了時）が記録
+- ツール使用ターンで tool_call / approval / tool_result が記録
+- `/logging` で OFF → ファイルに何も追記されなくなる
+- `/logging` で ON に戻す → 既存ファイルに追記再開
+- `/plan` ON/OFF で log の plan_mode フィールドが更新（llm_call イベントで確認）
+- `/think hide` で log の think_mode フィールドが更新
+- Ctrl+C 終了 → JSONL に `reason: "ctrl_c"` の session_end が記録
+- `/exit` 終了 → JSONL に `reason: "user_exit"` の session_end が記録
+- `data/` が `.gitignore` に含まれ `git status` で追跡されない
+
+### 制限事項
+- ログ収集の有効/無効は揮発（再起動で `DEFAULT_LOGGING_ENABLED = True` に戻る）
+- 良否マーキング（LoRA 品質フィルタ）は v0.8 で実装
+- ログファイルのローテーション・サイズ上限なし（暫定）
+- `llm_call` の `response` フィールドは msg dict（Pydantic モデルは `default=str` でフォールバック）
+
+---
+
 ## v0.6.5（完了）
 
 **目標**: qwen3 思考モードの 3 値制御。show（表示）/ hide（非表示）/ off（思考なし）を `/think` コマンドで切り替え、config.json に永続化する。

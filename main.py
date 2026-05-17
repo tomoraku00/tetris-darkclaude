@@ -12,6 +12,7 @@ from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from tools.registry import TOOL_SCHEMAS, dispatch
 from tools.approval import request_approval
+from session_log import SessionLog
 
 # Windows cp932 端末でも日本語ツール出力を正しく表示する
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -23,6 +24,7 @@ DEFAULT_THINK_MODE = "show"
 THINK_MODES = ("show", "hide", "off")
 _CONFIG_PATH = Path(__file__).parent / "config.json"
 _think_fallback_warned: list[bool] = [False]
+DEFAULT_LOGGING_ENABLED = True
 
 
 def load_config() -> dict:
@@ -39,6 +41,20 @@ def save_config(config: dict) -> None:
         json.dumps(config, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def _to_dict(obj) -> dict:
+    """Ollama レスポンスオブジェクトを dict 化する（JSON 直列化のため）。"""
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    try:
+        return vars(obj)
+    except TypeError:
+        return {"raw_repr": str(obj)}
 
 
 def get_installed_models() -> list[str]:
@@ -156,6 +172,15 @@ _SYSTEM_PROMPT = (
 )
 
 
+def _build_system_prompt(plan_mode: bool, think_mode: str) -> str:
+    content = _SYSTEM_PROMPT
+    if plan_mode:
+        content = _PLAN_SYSTEM_PROMPT + "\n\n" + _SYSTEM_PROMPT
+    if think_mode == "off":
+        content += "\n\n/no_think"
+    return content
+
+
 def chat_turn(
     messages: list,
     user_input: str,
@@ -164,9 +189,12 @@ def chat_turn(
     think_mode: str = "show",
     allowed_write_paths: set[str] | None = None,
     allowed_bash_commands: set[str] | None = None,
+    session_log: SessionLog | None = None,
 ) -> None:
     """Process one user input, including any tool-use loops."""
     messages.append({"role": "user", "content": user_input})
+    if session_log:
+        session_log.user_message(user_input)
 
     if allowed_write_paths is None:
         allowed_write_paths = set()
@@ -178,12 +206,8 @@ def chat_turn(
     turn_start = time.monotonic()
 
     while True:
-        system_content = _SYSTEM_PROMPT
-        if plan_mode:
-            system_content = _PLAN_SYSTEM_PROMPT + "\n\n" + _SYSTEM_PROMPT
-        if think_mode == "off":
-            system_content += "\n\n/no_think"
-        send_messages = [{"role": "system", "content": system_content}] + messages
+        send_messages = [{"role": "system", "content": _build_system_prompt(plan_mode, think_mode)}] + messages
+        llm_start = time.monotonic()
 
         with ThinkingIndicator():
             if think_mode == "off":
@@ -212,6 +236,8 @@ def chat_turn(
                 )
         msg = response["message"]
         messages.append(msg)
+        if session_log:
+            session_log.llm_call(send_messages, _to_dict(msg), int((time.monotonic() - llm_start) * 1000))
 
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
@@ -220,6 +246,8 @@ def chat_turn(
             if think_mode == "hide":
                 stripper = ThinkStripper()
                 content = stripper.feed(content) + stripper.flush()
+            if session_log:
+                session_log.assistant_message(content, int((time.monotonic() - turn_start) * 1000))
             print(f"\nDarkClaude: {content}\n")
             print(f"  (合計 {time.monotonic() - turn_start:.1f}s)")
             return
@@ -255,6 +283,9 @@ def chat_turn(
                 continue
             recent_calls.append(call_key)
 
+            if session_log:
+                session_log.tool_call(name, args)
+
             # 承認ゲート（Plan モード OFF かつ副作用ツールのみ）
             if not plan_mode and name in ("write_file", "bash"):
                 if name == "write_file":
@@ -272,18 +303,23 @@ def chat_turn(
 
                 if key not in allowed_set:
                     decision = request_approval(name, args)
+                    if session_log:
+                        session_log.approval(name, args, decision)
                     if decision == "always_allow":
                         allowed_set.add(key)
                     elif decision == "deny":
                         preview = str(args)[:80]
                         print(f"  [tool] {name}({preview}) -> USER_DENIED")
+                        denied_msg = (
+                            "USER_DENIED: あなた（ユーザー）がこのツールの実行を拒否しました。"
+                            "ファイル権限などシステムの問題ではありません。"
+                            "別のアプローチを提案するか、何をしたいか確認してください。"
+                        )
+                        if session_log:
+                            session_log.tool_result(name, args, denied_msg, True)
                         messages.append({
                             "role": "tool",
-                            "content": (
-                                "USER_DENIED: あなた（ユーザー）がこのツールの実行を拒否しました。"
-                                "ファイル権限などシステムの問題ではありません。"
-                                "別のアプローチを提案するか、何をしたいか確認してください。"
-                            ),
+                            "content": denied_msg,
                             "name": name,
                         })
                         continue
@@ -291,6 +327,8 @@ def chat_turn(
             tool_start = time.monotonic()
             result = dispatch(name, args, plan_mode=plan_mode)
             tool_elapsed = time.monotonic() - tool_start
+            if session_log:
+                session_log.tool_result(name, args, result, False)
 
             preview = str(args)[:80]
             print(f"  [tool] {name}({preview}) [{tool_elapsed:.1f}s]")
@@ -312,15 +350,31 @@ def main():
     config = load_config()
     model: str = config.get("model", DEFAULT_MODEL)
     think_mode: str = config.get("think_mode", DEFAULT_THINK_MODE)
+    logging_enabled: bool = config.get("logging_enabled", DEFAULT_LOGGING_ENABLED)
     if think_mode not in THINK_MODES:
         print(f"[warn] Invalid think_mode '{think_mode}' in config.json, falling back to 'show'.")
         think_mode = DEFAULT_THINK_MODE
-    if "think_mode" not in config or config.get("think_mode") != think_mode:
-        save_config({"model": model, "think_mode": think_mode})
+    if not isinstance(logging_enabled, bool):
+        print(f"[warn] Invalid logging_enabled '{logging_enabled}' in config.json, falling back to {DEFAULT_LOGGING_ENABLED}.")
+        logging_enabled = DEFAULT_LOGGING_ENABLED
+    if ("think_mode" not in config or config.get("think_mode") != think_mode or
+            "logging_enabled" not in config):
+        save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
     messages: list = []
     plan_mode: bool = False
     allowed_write_paths: set[str] = set()
     allowed_bash_commands: set[str] = set()
+    _data_dir = Path(__file__).parent / "data" / "conversations"
+    session_log = SessionLog(
+        enabled=logging_enabled,
+        base_dir=_data_dir,
+        dc_version="v0.7",
+        model=model,
+        plan_mode=plan_mode,
+        think_mode=think_mode,
+        system_prompt=_build_system_prompt(plan_mode, think_mode),
+    )
+    session_log.session_start()
 
     # ASCII art logo (ASCII characters only, codepage非依存)
     print(r"""
@@ -329,7 +383,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.6.5
+                                              v0.7
 """)
 
     # 起動時モデル存在チェック（Ollama 未起動時は例外を捕捉してスキップ）
@@ -350,12 +404,16 @@ def main():
             print(f"[warn] Configured model '{model}' not found in Ollama.")
             print(f"[warn] Falling back to '{FALLBACK_MODEL}' and updating config.json.")
             model = FALLBACK_MODEL
-            save_config({"model": model, "think_mode": think_mode})
+            save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
     except Exception:
         pass  # Ollama 未起動等 → チェックをスキップ、最初のチャットでエラーが出る
 
+    if session_log.enabled and session_log.file_path is not None:
+        print(f"[logging] Recording to {session_log.file_path}")
+    else:
+        print("[logging] Disabled (set logging_enabled: true in config.json to enable)")
     print(f"Model: {model}")
-    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan  |  /think [show|hide|off]")
+    print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan  |  /think [show|hide|off]  |  /logging")
     print()
 
     _bindings = KeyBindings()
@@ -380,7 +438,8 @@ def main():
         while True:
             think_tag = "" if think_mode == "show" else (" [HIDE]" if think_mode == "hide" else " [NOTHINK]")
             plan_tag = " [PLAN]" if plan_mode else ""
-            prompt_str = f"User{plan_tag}{think_tag} > "
+            log_tag = "" if session_log.enabled else " [NOLOG]"
+            prompt_str = f"User{plan_tag}{think_tag}{log_tag} > "
             user_input = _session.prompt(prompt_str).strip()
             if not user_input:
                 continue
@@ -388,6 +447,7 @@ def main():
             # 終了
             if user_input in ["/exit", "/quit", "/bye"]:
                 print("Goodbye!")
+                session_log.close("user_exit")
                 break
 
             # インストール済みモデル一覧
@@ -431,7 +491,7 @@ def main():
                             print(f"Installed: {', '.join(installed)}")
                     else:
                         model = name
-                        save_config({"model": model, "think_mode": think_mode})
+                        save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
                         print(f"Switched to: {model} (saved to config.json)")
                 continue
 
@@ -440,6 +500,28 @@ def main():
                 plan_mode = not plan_mode
                 status = "ON" if plan_mode else "OFF"
                 print(f"Plan モード: {status}")
+                session_log.update_context(plan_mode=plan_mode)
+                continue
+
+            # ログ収集制御
+            if user_input == "/logging" or user_input.startswith("/logging "):
+                arg = user_input[9:].strip() if user_input.startswith("/logging ") else ""
+                if arg == "on":
+                    enabled = session_log.set_enabled(True)
+                elif arg == "off":
+                    enabled = session_log.set_enabled(False)
+                elif arg == "status":
+                    enabled = session_log.enabled
+                elif not arg:
+                    enabled = session_log.toggle()
+                else:
+                    print(f"ERROR: invalid logging arg '{arg}'. Use: on | off | status")
+                    continue
+                status = "ON" if enabled else "OFF"
+                if enabled and session_log.file_path:
+                    print(f"ログ収集: {status} ({session_log.file_path})")
+                else:
+                    print(f"ログ収集: {status}")
                 continue
 
             # 思考モード切り替え
@@ -455,7 +537,8 @@ def main():
                     continue
                 old_mode = think_mode
                 think_mode = new_mode
-                save_config({"model": model, "think_mode": think_mode})
+                save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
+                session_log.update_context(think_mode=think_mode)
                 print(f"Think mode: {think_mode.upper()} (was {old_mode.upper()})")
                 continue
 
@@ -465,10 +548,12 @@ def main():
                 think_mode=think_mode,
                 allowed_write_paths=allowed_write_paths,
                 allowed_bash_commands=allowed_bash_commands,
+                session_log=session_log,
             )
 
     except (KeyboardInterrupt, EOFError):
         print("\nCtrl+C detected. Exiting safely.")
+        session_log.close("ctrl_c")
 
 
 if __name__ == "__main__":

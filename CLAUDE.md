@@ -51,7 +51,7 @@ User --> messages[] --> LLM --> response
 
 ## 現在のステータス
 
-### 完了（v0.6.5 まで）
+### 完了（v0.7 まで）
 - **v0.1〜v0.3**: REPL、ツール基盤（read/write/bash）
 - **v0.4**: grep / glob ツール
 - **v0.5〜v0.5.3.1**: Plan モード、無限リトライ抑制、grep 単一ファイル対応、作業時間表示
@@ -61,11 +61,16 @@ User --> messages[] --> LLM --> response
 - **v0.6.1〜v0.6.5**: 承認 TUI 化、deny メッセージ polish、モデルフォールバック、複数行ペースト、思考モード制御
   - `/think [show|hide|off]`: qwen3 の思考ブロック表示を 3 値で制御（config.json に永続化）
   - show=思考表示（既定）、hide=思考非表示・速度同等、off=思考無効・高速
+- **v0.7**: 軽量会話ログ収集（LoRA 訓練データの土台）
+  - `session_log.py`: SessionLog クラス（JSONL 追記、per-session ファイル、UTC タイムスタンプ）
+  - `/logging`: セッション内ログ収集トグル（揮発）
+  - ログイベント: session_start / user_message / llm_call / tool_call / approval / tool_result / assistant_message / session_end
+  - `data/conversations/` に保存（.gitignore 除外済み）
 
 ### 次のステップ
-- **v0.7**: 軽量会話ログ収集（LoRA 訓練データの土台）
+- **v0.8**: LoRA 訓練環境構築（Unsloth + データ整形パイプライン）
 
-詳細は ROADMAP.md のバージョン計画表参照。v0.7 以降は LoRA パイプラインに向けた整備期。
+詳細は ROADMAP.md のバージョン計画表参照。v0.8 以降は LoRA パイプライン本体の整備期。
 
 ---
 
@@ -157,6 +162,7 @@ darkclaude/
 ├── README.md
 ├── config.json         # モデル設定（起動時読み込み）
 ├── main.py             # REPL エントリポイント
+├── session_log.py      # 会話ログ収集（v0.7）
 ├── requirements.txt
 ├── .gitignore
 ├── tools/
