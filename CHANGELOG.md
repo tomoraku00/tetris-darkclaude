@@ -4,6 +4,33 @@
 
 ---
 
+## v0.5.3（完了）
+
+**目標**: 作業時間表示の追加（Claude Code 風）。LLM 推論中のスピナー・ツール経過時間・ターン合計時間を表示する。
+
+### 新規
+- `ThinkingIndicator` コンテキストマネージャ（`main.py`）
+  - `ollama.chat()` 呼び出しを `with ThinkingIndicator():` で囲む
+  - `threading.Thread(daemon=True)` で 1 秒ごとに `✻ <動詞> for Ns` を同じ行に上書き表示
+  - 動詞リスト（11 語）: Thinking / Cooking / Brewing / Cogitating / Crunching / Pondering / Simmering / 考え中 / 思考中 / 醸造中 / 煮込み中
+  - 動詞は `__enter__` 時に 1 度だけランダム選択し、スレッドと共有（ターン内で動詞が変わらない）
+  - `__exit__` 時にスレッドを停止し `\r` + スペース + `\r` で行をクリア
+- ツール実行時の経過時間表示
+  - `time.monotonic()` で dispatch 前後を計測
+  - `[tool]` 行の末尾に `[N.Ns]` を追記（例: `[tool] read_file({'path': 'main.py'}) [0.2s]`）
+- ターン完了時の合計時間表示
+  - 最終応答の直後に `  (合計 N.Ns)` を出力
+  - ターン開始（`chat_turn()` 入口）から最終テキスト応答まで計測
+- `main.py` のバージョン表示を v0.5.3 に更新
+
+### 動作確認済み
+- バナーに `v0.5.3` と表示
+- 単純な質問 → `✻ X for Ns` が動的更新、応答後クリア、`(合計 N.Ns)` 表示
+- ツール使用 → `[tool] name(args) [N.Ns]` 形式で経過時間表示
+- 複数ターンで異なる動詞が出現（ランダム性確認）
+
+---
+
 ## v0.5.2（完了）
 
 **目標**: grep ツールが単一ファイル指定を受け付けるよう拡張。Unix の `grep pat file.py` と同じ感覚で使えるようにする。

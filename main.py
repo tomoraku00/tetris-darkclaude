@@ -1,7 +1,10 @@
 import collections
+import random
 import sys
 import json
 import subprocess
+import threading
+import time
 from pathlib import Path
 import ollama
 from tools.registry import TOOL_SCHEMAS, dispatch
@@ -40,6 +43,44 @@ def get_installed_models() -> list[str]:
         return []
 
 
+_THINKING_VERBS = [
+    "Thinking", "Cooking", "Brewing", "Cogitating",
+    "Crunching", "Pondering", "Simmering",
+    "考え中", "思考中", "醸造中", "煮込み中",
+]
+
+_CLEAR_LINE = "\r" + " " * 60 + "\r"
+
+
+class ThinkingIndicator:
+    """ollama.chat() 中に '✻ <verb> for Ns' を 1 秒ごとに上書き表示するコンテキストマネージャ。"""
+
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._verb = ""
+
+    def _run(self) -> None:
+        start = time.monotonic()
+        while not self._stop.wait(1.0):
+            elapsed = time.monotonic() - start
+            print(f"\r✻ {self._verb} for {elapsed:.0f}s", end="", flush=True)
+
+    def __enter__(self) -> "ThinkingIndicator":
+        self._verb = random.choice(_THINKING_VERBS)
+        self._stop.clear()
+        print(f"✻ {self._verb} for 0s", end="", flush=True)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+        print(_CLEAR_LINE, end="", flush=True)
+
+
 _PLAN_SYSTEM_PROMPT = (
     "あなたは現在 Plan モードです。実装は行わず、これから取るべき手順を"
     "箇条書きで提示してください。ファイル書き込み（write_file）や bash 実行"
@@ -54,17 +95,19 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
 
     call_count = 0
     recent_calls: collections.deque = collections.deque(maxlen=3)
+    turn_start = time.monotonic()
 
     while True:
         send_messages = messages
         if plan_mode:
             send_messages = [{"role": "system", "content": _PLAN_SYSTEM_PROMPT}] + messages
 
-        response = ollama.chat(
-            model=model,
-            messages=send_messages,
-            tools=TOOL_SCHEMAS,
-        )
+        with ThinkingIndicator():
+            response = ollama.chat(
+                model=model,
+                messages=send_messages,
+                tools=TOOL_SCHEMAS,
+            )
         msg = response["message"]
         messages.append(msg)
 
@@ -72,6 +115,7 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
         if not tool_calls:
             # 通常のテキスト応答 → ターン終了
             print(f"\nDarkClaude: {msg.get('content', '')}\n")
+            print(f"  (合計 {time.monotonic() - turn_start:.1f}s)")
             return
 
         # ツール呼び出しを順に実行
@@ -105,9 +149,12 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
                 continue
             recent_calls.append(call_key)
 
-            preview = str(args)[:80]
-            print(f"  [tool] {name}({preview})")
+            tool_start = time.monotonic()
             result = dispatch(name, args, plan_mode=plan_mode)
+            tool_elapsed = time.monotonic() - tool_start
+
+            preview = str(args)[:80]
+            print(f"  [tool] {name}({preview}) [{tool_elapsed:.1f}s]")
             shown = result[:100] + ("..." if len(result) > 100 else "")
             print(f"  [result] {shown}")
             messages.append({
@@ -135,7 +182,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.5.2
+                                             v0.5.3
 """)
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
