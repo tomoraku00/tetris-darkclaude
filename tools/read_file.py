@@ -6,7 +6,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "read_file",
-        "description": "プロジェクト内のファイルを読み込み、内容を文字列で返す。",
+        "description": "プロジェクト内のファイルを読み込み、内容を文字列で返す。ファイル編集前に必ず使用すること（既存内容の確認用）。コード調査や仕様確認にも使用する。",
         "parameters": {
             "type": "object",
             "properties": {

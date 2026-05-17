@@ -6,7 +6,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "write_file",
-        "description": "プロジェクト内のファイルに内容を書き込む。既存ファイルは上書き。親ディレクトリがなければ自動作成。",
+        "description": "プロジェクト内のファイルに内容を書き込む。新規ファイル作成、または明示的にファイル全体を置き換える場合にのみ使用すること。既存ファイルの局所編集（関数修正、docstring 追加、数行の変更など）には str_replace を使うこと。親ディレクトリがなければ自動作成。",
         "parameters": {
             "type": "object",
             "properties": {

@@ -17,7 +17,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "grep",
-        "description": "プロジェクト内のファイルを正規表現で検索し、マッチした行を返す。",
+        "description": "プロジェクト内のファイル内容を正規表現で検索し、マッチした行を返す。ファイル内容の検索に使う。ファイルパスの検索には glob を使うこと。",
         "parameters": {
             "type": "object",
             "properties": {

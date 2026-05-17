@@ -15,7 +15,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "glob",
-        "description": "プロジェクト内のファイルパスを glob パターンで検索し、マッチしたパスのリストを返す。",
+        "description": "プロジェクト内のファイルパスを glob パターンで検索し、マッチしたパスのリストを返す。ファイルパスの検索に使う。ファイル内容の検索には grep を使うこと。",
         "parameters": {
             "type": "object",
             "properties": {
