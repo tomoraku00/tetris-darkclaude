@@ -1,0 +1,24 @@
+# ============================================================
+# training/requirements.txt  —  Python 3.12 専用 venv 用
+# ============================================================
+# 【重要】torch 2.11.0+cu126 は index URL が異なるため先に手動インストール:
+#   pip install "torch==2.11.0+cu126" torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+# torch 2.10.x では xformers cpp 拡張が読み込まれず Unsloth がクラッシュする。
+# その後:
+#   pip install -r requirements.txt
+# ============================================================
+
+# --- 訓練コアスタック ---
+unsloth
+transformers>=4.51.0
+trl>=0.12.0
+datasets>=3.0.0
+accelerate>=0.34.0
+
+# --- 量子化 ---
+bitsandbytes>=0.43.0
+
+# --- その他ユーティリティ ---
+pyyaml>=6.0
+sentencepiece
+protobuf

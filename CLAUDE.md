@@ -51,7 +51,7 @@ User --> messages[] --> LLM --> response
 
 ## 現在のステータス
 
-### 完了（v0.7 まで）
+### 完了（v0.8 まで）
 - **v0.1〜v0.3**: REPL、ツール基盤（read/write/bash）
 - **v0.4**: grep / glob ツール
 - **v0.5〜v0.5.3.1**: Plan モード、無限リトライ抑制、grep 単一ファイル対応、作業時間表示
@@ -66,11 +66,16 @@ User --> messages[] --> LLM --> response
   - `/logging`: セッション内ログ収集トグル（揮発）
   - ログイベント: session_start / user_message / llm_call / tool_call / approval / tool_result / assistant_message / session_end
   - `data/conversations/` に保存（.gitignore 除外済み）
+- **v0.8**: LoRA 訓練環境構築（Unsloth + データ整形パイプライン）
+  - `training/`: Python 3.12 専用 venv（本体 3.14 と完全隔離）
+  - prepare.py / train.py / eval.py / deploy.py（スケルトン）
+  - サニティチェック: Qwen3-4B 4bit で 100 steps、~2 分、VRAM ~3.5GB（RTX 4060）
+  - **重要**: Qwen3-8B は RTX 4060 8GB では訓練オーバーヘッドが収まらず非実用（1 step ~60s）
 
 ### 次のステップ
-- **v0.8**: LoRA 訓練環境構築（Unsloth + データ整形パイプライン）
+- **v0.9**: 初回 LoRA 訓練 + 評価ループ + Ollama デプロイ
 
-詳細は ROADMAP.md のバージョン計画表参照。v0.8 以降は LoRA パイプライン本体の整備期。
+詳細は ROADMAP.md のバージョン計画表参照。
 
 ---
 

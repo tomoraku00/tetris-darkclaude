@@ -1,0 +1,3 @@
+{"id": "001", "category": "code-read", "prompt": "main.py の関数を一覧して"}
+{"id": "002", "category": "code-write", "prompt": "tools/registry.py に新しいツール X を追加して"}
+{"id": "003", "category": "general", "prompt": "Python の dict と OrderedDict の違いは？"}

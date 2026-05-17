@@ -5,3 +5,8 @@ __pycache__/
 .claude/
 # v0.7 会話ログ
 data/
+# v0.8 訓練パイプライン（生成物）
+training/.venv/
+training/prepared/
+training/output/
+training/eval_results/

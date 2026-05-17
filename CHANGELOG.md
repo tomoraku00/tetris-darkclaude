@@ -4,6 +4,61 @@
 
 ---
 
+## v0.8（完了）
+
+**目標**: LoRA 訓練環境の構築。v0.7 で収集した会話ログを ChatML 形式に変換し、Unsloth + 4bit QLoRA で Qwen3 モデルを訓練・評価するパイプラインを `training/` サブディレクトリに整備する。
+
+### 新規
+- `training/prepare.py`: 会話ログ（`data/conversations/*.jsonl`）→ ChatML JSONL 変換スクリプト
+  - `--input` / `--output` オプション（省略時はデフォルトパス）
+  - thinking_ratio: `<think>` ブロックを含む LLM 呼び出しの割合を標準出力に表示
+  - データが空でも正常終了（メッセージを表示して 0 件で完了）
+- `training/train.py`: Unsloth 4bit QLoRA 訓練スクリプト
+  - `--config`（YAML）、`--data`（ローカル JSONL）、`--hf-dataset`（HF データセット）、`--max-steps` オプション
+  - run_id: タイムスタンプ + 6 桁 hex、`output/<run_id>/` に保存
+  - VRAM ログ: モデルロード後・訓練開始前・empty_cache 後・訓練終了後を出力
+  - 訓練後に LoRA adapter と meta.json を `output/<run_id>/adapter/` に保存
+  - Windows 環境対応: `dataloader_num_workers=0`、`device_map={"": 0}`（bnb4bit CPU dispatch 回避）
+- `training/eval.py`: 訓練前後の応答比較評価スクリプト
+  - `--adapter`（LoRA adapter パス）、`--out`（出力ディレクトリ）
+  - `eval_set/prompts.jsonl` を読み込み、ベースモデル / 訓練後モデルの応答を比較
+  - `eval_results/<timestamp>_<run_id>.md` に Markdown 出力（手動採点欄付き）
+- `training/deploy.py`: Ollama デプロイ スケルトン（v0.9 で実装）
+- `training/configs/lora_default.yaml`: LoRA 訓練設定（model, lora, training セクション）
+- `training/eval_set/prompts.jsonl`: 評価プロンプト 3 件（code-read / code-write / general）
+- `training/requirements.txt`: 訓練側依存（unsloth, transformers, trl, datasets, accelerate, bitsandbytes, pyyaml 等）
+- `training/README.md`: セットアップ手順・パイプライン実行・VRAM 注意・トラブルシューティング
+
+### 変更
+- `training/` ディレクトリを `nanoclaude/` 配下に新設（本体 Python 3.14 と隔離した Python 3.12 専用 venv で動作）
+
+### Windows 環境での既知問題と対処（重要）
+| 問題 | 原因 | 対処 |
+|---|---|---|
+| `STATUS_ACCESS_VIOLATION (0xC0000005)` | Unsloth 2026.5.2 + torch 2.11: `from unsloth import` より前に `import datasets` が必要 | `import datasets` を最初に置く（import 順序固定） |
+| SSL 証明書エラー（HF ダウンロード失敗） | Windows の OS 証明書ストアと certifi の乖離 | `truststore` パッケージをインストールして `truststore.inject_into_ssl()` を呼ぶ |
+| hf_transfer SSL bypass（ダウンロードが 0% でハング） | `unsloth/dataprep/synthetic.py` が `HF_HUB_ENABLE_HF_TRANSFER=1` を強制設定 | `pip uninstall hf_transfer -y` で削除 |
+| hf_xet SSL bypass（大ファイルが 0% でハング） | hf-xet は独自 SSL スタックで truststore を bypass | `HF_HUB_DISABLE_XET=1` + `pip uninstall hf_xet -y` |
+| `ValueError: Some modules dispatched on CPU` | Unsloth デフォルトの `device_map="sequential"` が bnb4bit と競合 | `device_map={"": 0}` を `FastLanguageModel.from_pretrained` に指定 |
+| fused CE loss VRAM OOM（Qwen3-8B のみ） | RTX 4060 8GB に対して Qwen3-8B 4bit が ~7GB を占有し、first forward pass 後に free VRAM ≈ 0 | `unsloth_zoo/fused_losses/cross_entropy_loss.py` の `target_gb <= 1e-9` 分岐で `raise` → `target_gb = 0.01` に変更（venv パッチ） |
+
+### 動作確認済み
+- `python prepare.py` → データ空でも正常完了、thinking_ratio 表示
+- `python train.py --config configs/lora_default.yaml --hf-dataset tatsu-lab/alpaca --hf-max-samples 1000 --max-steps 100`
+  → 100 steps 完了（Qwen3-4B 4bit: ~2分15秒、VRAM peak ~3.75GB）
+  → `output/<run_id>/adapter/` に LoRA adapter 保存
+- `python eval.py --adapter output/<run_id>/adapter`
+  → `eval_results/<timestamp>_<run_id>.md` に比較 Markdown 出力
+- `python -c "import training.deploy"` → `deploy import OK`
+
+### 制限事項
+- **Qwen3-8B の 100-step サニティチェックは RTX 4060 8GB では実用的でない**: VRAM 消費 ~7GB + 訓練オーバーヘッドで 1 step が 50〜130s に達し、100 steps に約 2〜3 時間かかる。サニティチェックは Qwen3-4B（~3.5GB VRAM、1.3s/step）で実施した。本番訓練での 8B 使用は設定変更後に試行すること
+- `unsloth_zoo` の fused CE loss パッチは venv ローカル変更のため `pip install --upgrade unsloth` で上書きされる
+- eval_set の本番プロンプト 20 件はユーザーが手書きで追加する（現在 3 件）
+- deploy.py は v0.9 で実装予定
+
+---
+
 ## v0.7（完了）
 
 **目標**: 軽量会話ログ収集。会話・ツール呼び出し・モデル応答をセッション単位で JSONL ファイルに保存し、v0.8 以降の LoRA 訓練データの土台を作る。
