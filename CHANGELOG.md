@@ -4,6 +4,39 @@
 
 ---
 
+## v0.6.2（完了）
+
+**目標**: Deny 時のフィードバック文言 polish。LLM が "ERROR: ..." を「システムエラー」と誤解釈し、「ファイルが読み取り専用」等の技術的推測をしてしまう問題を修正する。
+
+### 変更
+- `main.py`: `_SYSTEM_PROMPT` 定数を新規追加
+  - ユーザー承認の仕組みと `USER_DENIED: ...` マーカーの意味を LLM に伝えるシステムプロンプト
+  - 「原因を推測しない」「技術的推測をしない」「別アプローチを提案するか確認する」の 3 点を明示
+  - 通常モード・Plan モードの両方で常に先頭に挿入する（Plan モード時は `_PLAN_SYSTEM_PROMPT + _SYSTEM_PROMPT` を連結）
+- `main.py`: ユーザーが Deny / Ctrl+C を選んだ際の tool_result メッセージを変更
+  - 旧: `"ERROR: ユーザーが承認を拒否しました"`
+  - 新: `"USER_DENIED: あなた（ユーザー）がこのツールの実行を拒否しました。ファイル権限などシステムの問題ではありません。別のアプローチを提案するか、何をしたいか確認してください。"`
+  - "ERROR" → "USER_DENIED:" マーカーに変更し、LLM がエラーとして扱わないようにする
+- `main.py`: ログ表示を `-> denied by user` から `-> USER_DENIED` に変更（tool_result マーカーと表記を統一）
+- `main.py`: 不正引数時（path/command が空）の tool_result を `"ERROR: ツールの引数が不正です（path または command が空）"` に修正（"ユーザーが拒否" という不正確な文言を削除）
+- バナー表示を v0.6.2 に更新
+
+### 動作確認済み
+- バナーに `v0.6.2` と表示
+- write_file で Deny → `[tool] ... -> USER_DENIED`、LLM が「ファイル権限の問題」等の推測をしない
+- bash で Deny → 同上
+- Ctrl+C で承認キャンセル → USER_DENIED 文言、誤解釈なし
+- Allow once / Always allow の通常フロー → v0.6.1 と同じ挙動（回帰なし）
+- Plan モード中の write_file → 既存の _PLAN_BLOCKED メッセージのまま、影響なし
+- read_file / grep / glob → 承認プロンプトなし（影響なし）
+
+### 制限事項（v0.6.x 以降で段階追加予定）
+- パターンマッチ許可（git *, npm test * 等のワイルドカード）は未対応
+- 理由付き deny（拒否時にユーザーがフィードバックテキストを入力して LLM に渡す機能）は未対応
+- 承認リストの永続化（config.json 書き込み）は未対応
+
+---
+
 ## v0.6.1（完了）
 
 **目標**: 承認メニューを矢印キー TUI 化。questionary.select() による上下選択 + Enter 確定に置き換える。

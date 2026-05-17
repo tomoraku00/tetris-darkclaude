@@ -89,6 +89,26 @@ _PLAN_SYSTEM_PROMPT = (
     "使用可能です。"
 )
 
+_SYSTEM_PROMPT = (
+    "## ユーザー承認について\n\n"
+    "write_file と bash の実行前に、ユーザーは承認プロンプトを受け取る。\n"
+    "ユーザーが Deny / Ctrl+C を選んだ場合、tool_result は\n"
+    '"USER_DENIED: ..." で始まる文字列になる。\n\n'
+    "USER_DENIED が返ってきた場合:\n"
+    "- これはユーザーの意思による拒否であり、システムエラーやファイル権限の\n"
+    "  問題ではない。原因を推測しない。\n"
+    "- 「ファイルが読み取り専用」「権限がない」「パターンが原因」などの\n"
+    "  技術的推測を一切しない。\n"
+    "- ユーザーに何をしたいか確認するか、別のアプローチ（読み取り、別パス、\n"
+    "  別コマンドなど）を提案する。\n"
+    "- USER_DENIED は過去の一度のツール実行に対する拒否であり、その後の\n"
+    "  ユーザーの新しい指示には影響しない。ユーザーが改めて同じ種類の\n"
+    "  操作を指示した場合は、躊躇せずツールを呼び出して再度承認を求めること。\n"
+    "  過去の拒否履歴を根拠にツール呼び出しをスキップしてはならない。\n"
+    "  各ツール呼び出しは独立した判断であり、承認プロンプトはユーザーの\n"
+    "  意思を確認する正しい手段である。"
+)
+
 
 def chat_turn(
     messages: list,
@@ -111,9 +131,10 @@ def chat_turn(
     turn_start = time.monotonic()
 
     while True:
-        send_messages = messages
+        system_content = _SYSTEM_PROMPT
         if plan_mode:
-            send_messages = [{"role": "system", "content": _PLAN_SYSTEM_PROMPT}] + messages
+            system_content = _PLAN_SYSTEM_PROMPT + "\n\n" + _SYSTEM_PROMPT
+        send_messages = [{"role": "system", "content": system_content}] + messages
 
         with ThinkingIndicator():
             response = ollama.chat(
@@ -174,7 +195,7 @@ def chat_turn(
                 if not key:
                     preview = str(args)[:80]
                     print(f"  [tool] {name}({preview}) -> denied (invalid args)")
-                    messages.append({"role": "tool", "content": "ERROR: ユーザーが承認を拒否しました", "name": name})
+                    messages.append({"role": "tool", "content": "ERROR: ツールの引数が不正です（path または command が空）", "name": name})
                     continue
 
                 if key not in allowed_set:
@@ -183,8 +204,16 @@ def chat_turn(
                         allowed_set.add(key)
                     elif decision == "deny":
                         preview = str(args)[:80]
-                        print(f"  [tool] {name}({preview}) -> denied by user")
-                        messages.append({"role": "tool", "content": "ERROR: ユーザーが承認を拒否しました", "name": name})
+                        print(f"  [tool] {name}({preview}) -> USER_DENIED")
+                        messages.append({
+                            "role": "tool",
+                            "content": (
+                                "USER_DENIED: あなた（ユーザー）がこのツールの実行を拒否しました。"
+                                "ファイル権限などシステムの問題ではありません。"
+                                "別のアプローチを提案するか、何をしたいか確認してください。"
+                            ),
+                            "name": name,
+                        })
                         continue
 
             tool_start = time.monotonic()
@@ -222,7 +251,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.6.1
+                                             v0.6.2
 """)
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
