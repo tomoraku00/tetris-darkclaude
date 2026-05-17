@@ -185,6 +185,20 @@ qwen2.5-coder:7b は tool calling 出力が不安定で、tool_calls フィー�
   - bnb4bit + CPU dispatch エラー → `device_map={"": 0}` を `FastLanguageModel.from_pretrained`
     に指定して GPU 固定（デフォルトの `device_map="sequential"` が競合）
 
+- **v0.8 完了後判断: Qwen3-4B は DarkClaude の用途では性能不足 (2026-05-18)**:
+  - 素のベースモデル評価（DarkClaude のシステムプロンプト + ツール環境込み、
+    未訓練）を 2 課題で実施
+  - 課題 1（コード読解 + ツール呼び出し連鎖）: read_file の結果を反映せず
+    汎用的な「Ollama チャットボット紹介文」に流れた。プロジェクト固有名詞を
+    複数ハルシネーション（DarkClaude → DarkC、Qwen3 → Llama3、
+    /setmodel → /model）。日本語質問に英語で応答
+  - 課題 2（ピンポイント編集）: ツール呼び出し JSON をメッセージ本文として
+    出力（実ツール呼び出しが発火せず）。仮に発火していれば write_file で
+    対象ファイル全体を docstring 1 つだけに置換していた（ファイル破壊リスク）。
+    read_file による事前確認なし、ツール選択も誤り
+  - 結論: 8B → 4B の段差はベンチマーク数値以上に大きく、エージェント用途では
+    別モデルとして扱うべき。プロンプト調整では救えない構造的能力差
+
 ---
 
 ## ディレクトリ構造（目標）
