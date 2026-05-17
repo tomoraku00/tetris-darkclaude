@@ -51,32 +51,18 @@ User --> messages[] --> LLM --> response
 
 ## 現在のステータス
 
-### 完了
-- **v0.1**: Ollama 会話 REPL、ASCII アートロゴ、`/exit` 等コマンド
+### 完了（v0.6 まで）
+- **v0.1〜v0.3**: REPL、ツール基盤（read/write/bash）
+- **v0.4**: grep / glob ツール
+- **v0.5〜v0.5.3.1**: Plan モード、無限リトライ抑制、grep 単一ファイル対応、作業時間表示
+- **v0.6**: 権限承認システム（write_file / bash の実行前に承認プロンプト）
+  - `tools/approval.py`: `request_approval()` が 1回許可 / 常に許可 / 拒否 を返す
+  - 許可状態は揮発（セッション内のみ、再起動でリセット）
 
-### 開発中
-- **v0.2** (read_file / write_file ツール): **要復旧**
-  - 状況: 以前 Cline + qwen2.5-coder:7b で実装途中、`tools` フォルダがフォルダではなく 0 バイトの空ファイルになってしまった状態
-  - 必要作業:
-    1. 空ファイル `tools` を削除（`Remove-Item tools` または `rm tools`）
-    2. `tools/` ディレクトリを作成
-    3. 配下に `__init__.py`, `registry.py`, `read_file.py`, `write_file.py` を作成
-    4. `main.py` に tool 呼び出しループを統合
-  - 実装着手前に `dir`, `type main.py`, `git status` で現状を確認すること
+### 次のステップ
+- **v0.7**: 軽量会話ログ収集（LoRA 訓練データの土台）
 
-### 次以降の予定
-
-ROADMAP.md のバージョン計画表参照。流れとしては:
-
-```
-v0.3 (bash) → v0.4 (grep/glob) → v0.5 (Plan モード) → v0.6 (権限承認)
-  → v0.7 (軽量会話ログ収集、LoRA データの土台)
-  → v0.8 (LoRA 訓練環境構築)
-  → v0.9 (初回 LoRA 訓練 + 評価ループ)
-  → v1.0 (LoRA 込み配布)
-```
-
-v0.7 以降は LoRA パイプラインに向けた整備期。詳細は ROADMAP.md の「学習機構について」セクション参照。
+詳細は ROADMAP.md のバージョン計画表参照。v0.7 以降は LoRA パイプラインに向けた整備期。
 
 ---
 
@@ -166,17 +152,19 @@ darkclaude/
 ├── ROADMAP.md          # バージョン計画と将来検討
 ├── CHANGELOG.md        # 完了バージョン履歴
 ├── README.md
+├── config.json         # モデル設定（起動時読み込み）
 ├── main.py             # REPL エントリポイント
 ├── requirements.txt
 ├── .gitignore
-├── tools/              # ★ v0.2 で本格化
+├── tools/
 │   ├── __init__.py
-│   ├── registry.py     # TOOL_SCHEMAS と dispatch
+│   ├── registry.py     # TOOL_SCHEMAS と dispatch（Plan モードブロック含む）
+│   ├── approval.py     # 承認 UI（v0.6）
 │   ├── read_file.py    # v0.2
 │   ├── write_file.py   # v0.2
-│   ├── bash.py         # v0.3 (未着手)
-│   ├── grep.py         # v0.4 (未着手)
-│   └── glob.py         # v0.4 (未着手)
+│   ├── bash.py         # v0.3
+│   ├── grep.py         # v0.4（単一ファイル対応済み）
+│   └── glob.py         # v0.4
 ├── data/               # ★ v0.7 から使う（運用ログ蓄積場所）
 │   └── conversations/  # JSONL ファイル群
 └── training/           # ★ v0.8 から使う（LoRA 訓練関連）

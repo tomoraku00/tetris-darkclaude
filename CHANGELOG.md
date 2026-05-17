@@ -4,6 +4,51 @@
 
 ---
 
+## v0.6（完了）
+
+**目標**: 権限承認システムの追加。write_file / bash の実行直前にユーザーに承認を求め、「1回許可 / 常に許可 / 拒否」を選ばせる。
+
+### 新規
+- `tools/approval.py`: 承認 UI の実装
+  - `request_approval(tool_name, args) -> "allow_once" | "always_allow" | "deny"`
+  - write_file: Path / Content（先頭80文字、改行→`\n`）/ Size を表示
+  - bash: Command を表示
+  - 「1. Allow once / 2. Always allow ... / 3. Deny」メニュー
+  - 無効入力は再プロンプト、Ctrl+C / EOFError は deny 扱い（REPL は継続）
+- `main.py` 承認ゲート（`chat_turn()` 内、dispatch 直前）
+  - 対象: write_file / bash（Plan モード OFF の時のみ）
+  - read_file / grep / glob は対象外（副作用なし）
+  - Plan モード ON の時は承認スキップ（dispatch で既にブロックされる）
+  - 「常に許可」の粒度: write_file はパス単位、bash はコマンド完全一致
+- セッション状態（揮発、再起動でリセット）
+  - `allowed_write_paths: set[str]`、`allowed_bash_commands: set[str]` を `main()` のローカル変数として保持
+  - `chat_turn()` の引数として受け渡し、グローバル変数は使わない
+  - set は mutable なので `always_allow` 追加が `main()` 側にも反映される
+- 2 層防御の整理: 承認ゲート（ユーザー判断）→ Plan モードブロック（コード判断）→ dispatch
+- バナー表示を v0.6 に更新
+
+### 動作確認済み
+- バナーに `v0.6` と表示
+- write_file に approval needed プロンプトが出る（Path / Content / Size 表示）
+- 1 選択 → 実行成功、同パスの次回は再度プロンプト
+- 2 選択 → 実行成功、同パスの以降はプロンプトなしで即実行（許可済みセット）
+- 3 選択 → `[tool] ... -> denied by user`、LLM に `ERROR: ユーザーが承認を拒否しました` が返る
+- bash も同様の承認 UI（Command 表示、Always allow '<command>'）
+- 同コマンド文字列で 2 選択後は以降プロンプトなし
+- 別コマンドは別許可が必要
+- Ctrl+C → deny 扱い、REPL は継続
+- 無効入力（4, yes, 空）→ 再プロンプト
+- Plan モード中は承認プロンプトなし、既存の Plan ブロックが効く
+- read_file / grep / glob はプロンプトなし
+- 再起動後は許可リセット（揮発確認）
+
+### 制限事項（v0.6.x 以降で段階追加予定）
+- パターンマッチ許可（git *, npm test * 等のワイルドカード）は未対応
+- 理由付き deny（拒否時に LLM へのフィードバック）は未対応
+- 許可リストの永続化（config.json 書き込み）は未対応
+
+---
+
 ## v0.5.3.1（完了）
 
 **目標**: ThinkingIndicator の日本語動詞リストをテック寄りに調整。

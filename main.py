@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 import ollama
 from tools.registry import TOOL_SCHEMAS, dispatch
+from tools.approval import request_approval
 
 # Windows cp932 端末でも日本語ツール出力を正しく表示する
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -89,9 +90,21 @@ _PLAN_SYSTEM_PROMPT = (
 )
 
 
-def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = False) -> None:
+def chat_turn(
+    messages: list,
+    user_input: str,
+    model: str,
+    plan_mode: bool = False,
+    allowed_write_paths: set[str] | None = None,
+    allowed_bash_commands: set[str] | None = None,
+) -> None:
     """Process one user input, including any tool-use loops."""
     messages.append({"role": "user", "content": user_input})
+
+    if allowed_write_paths is None:
+        allowed_write_paths = set()
+    if allowed_bash_commands is None:
+        allowed_bash_commands = set()
 
     call_count = 0
     recent_calls: collections.deque = collections.deque(maxlen=3)
@@ -149,6 +162,31 @@ def chat_turn(messages: list, user_input: str, model: str, plan_mode: bool = Fal
                 continue
             recent_calls.append(call_key)
 
+            # 承認ゲート（Plan モード OFF かつ副作用ツールのみ）
+            if not plan_mode and name in ("write_file", "bash"):
+                if name == "write_file":
+                    key = args.get("path", "")
+                    allowed_set = allowed_write_paths
+                else:
+                    key = args.get("command", "").strip()
+                    allowed_set = allowed_bash_commands
+
+                if not key:
+                    preview = str(args)[:80]
+                    print(f"  [tool] {name}({preview}) -> denied (invalid args)")
+                    messages.append({"role": "tool", "content": "ERROR: ユーザーが承認を拒否しました", "name": name})
+                    continue
+
+                if key not in allowed_set:
+                    decision = request_approval(name, args)
+                    if decision == "always_allow":
+                        allowed_set.add(key)
+                    elif decision == "deny":
+                        preview = str(args)[:80]
+                        print(f"  [tool] {name}({preview}) -> denied by user")
+                        messages.append({"role": "tool", "content": "ERROR: ユーザーが承認を拒否しました", "name": name})
+                        continue
+
             tool_start = time.monotonic()
             result = dispatch(name, args, plan_mode=plan_mode)
             tool_elapsed = time.monotonic() - tool_start
@@ -174,6 +212,8 @@ def main():
     model: str = config.get("model", DEFAULT_MODEL)
     messages: list = []
     plan_mode: bool = False
+    allowed_write_paths: set[str] = set()
+    allowed_bash_commands: set[str] = set()
 
     # ASCII art logo (ASCII characters only, codepage非依存)
     print(r"""
@@ -182,7 +222,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.5.3.1
+                                             v0.6
 """)
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
@@ -252,7 +292,12 @@ def main():
                 print(f"Plan モード: {status}")
                 continue
 
-            chat_turn(messages, user_input, model, plan_mode=plan_mode)
+            chat_turn(
+                messages, user_input, model,
+                plan_mode=plan_mode,
+                allowed_write_paths=allowed_write_paths,
+                allowed_bash_commands=allowed_bash_commands,
+            )
 
     except KeyboardInterrupt:
         print("\nCtrl+C detected. Exiting safely.")
