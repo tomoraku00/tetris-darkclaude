@@ -4,6 +4,22 @@
 
 ---
 
+## v0.6.1（完了）
+
+**目標**: 承認メニューを矢印キー TUI 化。questionary.select() による上下選択 + Enter 確定に置き換える。
+
+### 変更
+- `tools/approval.py`: 番号入力ループを `questionary.select()` に差し替え
+  - ヘッダー（Tool / Path / Content / Size / Command）の表示フォーマットは v0.6 と同一
+  - 選択肢ラベルも v0.6 と同一（"Allow once" / "Always allow ..." / "Deny"）
+  - Ctrl+C → `None` 返却または `KeyboardInterrupt` 、いずれも "deny" にマップ
+  - 無効入力の概念がなくなり（メニュー固定）、再プロンプトループを削除
+- `requirements.txt` に `questionary>=2.0.0` 追加
+- `README.md` に依存パッケージのインストール手順を追記
+- バナー表示を v0.6.1 に更新
+
+---
+
 ## v0.6（完了）
 
 **目標**: 権限承認システムの追加。write_file / bash の実行直前にユーザーに承認を求め、「1回許可 / 常に許可 / 拒否」を選ばせる。

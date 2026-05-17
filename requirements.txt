@@ -1,1 +1,2 @@
 ollama
+questionary>=2.0.0

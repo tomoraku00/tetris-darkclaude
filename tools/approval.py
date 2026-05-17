@@ -1,4 +1,5 @@
 import sys
+import questionary
 
 
 def request_approval(tool_name: str, args: dict) -> str:
@@ -21,29 +22,33 @@ def request_approval(tool_name: str, args: dict) -> str:
         print(f"    Path: {path}")
         print(f"    Content: {preview}")
         print(f"    Size: {size} bytes")
-        always_label = f"Always allow writes to '{path}'"
+        choices = [
+            "Allow once",
+            f"Always allow writes to '{path}'",
+            "Deny",
+        ]
     elif tool_name == "bash":
         command = args.get("command", "").strip()
         print(f"    Command: {command}")
-        always_label = f"Always allow '{command}'"
+        choices = [
+            "Allow once",
+            f"Always allow '{command}'",
+            "Deny",
+        ]
     else:
-        always_label = f"Always allow {tool_name}"
+        choices = ["Allow once", f"Always allow {tool_name}", "Deny"]
 
-    print()
-    print("    1. Allow once")
-    print(f"    2. {always_label}")
-    print("    3. Deny")
+    try:
+        result = questionary.select("Choose:", choices=choices).ask()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return "deny"
 
-    while True:
-        try:
-            choice = input("  Choice [1-3]: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            return "deny"
-
-        if choice == "1":
-            return "allow_once"
-        elif choice == "2":
-            return "always_allow"
-        elif choice == "3":
-            return "deny"
+    if result is None:
+        return "deny"
+    elif result == "Allow once":
+        return "allow_once"
+    elif result == "Deny":
+        return "deny"
+    else:
+        return "always_allow"
