@@ -7,6 +7,9 @@ import threading
 import time
 from pathlib import Path
 import ollama
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
 from tools.registry import TOOL_SCHEMAS, dispatch
 from tools.approval import request_approval
 
@@ -252,7 +255,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.6.3
+                                             v0.6.4
 """)
 
     # 起動時モデル存在チェック（Ollama 未起動時は例外を捕捉してスキップ）
@@ -281,10 +284,28 @@ def main():
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
     print()
 
+    _bindings = KeyBindings()
+
+    @_bindings.add("enter")
+    def _(event):
+        buf = event.current_buffer
+        if buf.text.endswith("\\"):
+            buf.delete_before_cursor(1)
+            buf.insert_text("\n")
+        else:
+            buf.validate_and_handle()
+
+    _session = PromptSession(
+        history=InMemoryHistory(),
+        key_bindings=_bindings,
+        multiline=False,
+        prompt_continuation=lambda width, line_number, is_soft_wrap: "... ",
+    )
+
     try:
         while True:
-            prompt = "User [PLAN] > " if plan_mode else "User > "
-            user_input = input(prompt).strip()
+            prompt_str = "User [PLAN] > " if plan_mode else "User > "
+            user_input = _session.prompt(prompt_str).strip()
             if not user_input:
                 continue
 
@@ -352,7 +373,7 @@ def main():
                 allowed_bash_commands=allowed_bash_commands,
             )
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print("\nCtrl+C detected. Exiting safely.")
 
 

@@ -4,6 +4,44 @@
 
 ---
 
+## v0.6.4（完了）
+
+**目標**: 複数行ペースト対応と手動改行（`\ + Enter`）の追加。REPL の入力受付を `input()` から prompt_toolkit の `PromptSession` に置き換え、複数行入力・入力履歴・行内編集を実現する。
+
+### 変更
+- `main.py` に prompt_toolkit インポートを追加（`PromptSession`、`InMemoryHistory`、`KeyBindings`）
+  - prompt_toolkit は v0.6.1 の questionary 依存として既にインストール済み、新規依存なし
+- メインの `input()` を `PromptSession.prompt()` に置き換え
+  - `InMemoryHistory` による入力履歴（↑↓ で過去の入力を辿れる、揮発）
+  - ←→、Home/End、Backspace、Ctrl+A/E などの行内編集が効く
+  - bracketed paste mode 対応（ターミナルからのペーストで改行が送信されず入力欄に保持される）
+  - 複数行入力中の続き行に `prompt_continuation = "... "` を表示
+- `\ + Enter` による手動改行の実装（`KeyBindings` で Enter キーを上書き）
+  - 行末が `\` の場合: `\` を削除して `\n` を挿入し入力継続
+  - それ以外の場合: 通常通り送信（`validate_and_handle()`）
+- `except` 節に `EOFError` を追加して Ctrl+D によるクリーン終了をサポート
+- バナー表示を v0.6.4 に更新
+
+### 動作確認済み
+- バナーに `v0.6.4` と表示
+- 通常の 1 行入力 + Enter → 既存通り送信
+- 複数行テキストのクリップボードからのペースト → 全行が入力欄に保持され、Enter で全体が 1 メッセージとして送信
+- 行末に `\` を打って Enter → 送信されず `\` が消えて改行が入る、次の行頭に `... ` が出る
+- `\` 改行を複数行続けた後 Enter → 全体が 1 メッセージとして送信（改行は `\n` として保持）
+- コマンド（`/exit` `/plan` `/model` `/models`）→ 既存通り動作
+- ↑ キー → 直前の入力が呼び出される、↓ で戻れる
+- ←→ Home End Backspace → 行内で自由にカーソル移動・編集
+- Ctrl+C → `KeyboardInterrupt`、既存通りクリーン終了
+- Ctrl+D → `EOFError`、クリーン終了
+- 複数行ペーストを含む write_file 指示 → 既存の承認 UI（questionary）と競合なし
+
+### 制限事項（将来検討）
+- 入力履歴の永続化（`FileHistory`）→ セッション内のみの揮発
+- コマンド補完（`/exit` `/plan` 等のタブ補完）→ 未対応
+- 入力欄の色付け・スタイル → 将来 TUI 化と合わせて検討
+
+---
+
 ## v0.6.3（完了）
 
 **目標**: 削除済みモデルのフォールバック。config.json に記録されているモデルが Ollama から削除されていた場合、起動時に検出して `qwen3:8b` に自動フォールバックする。
