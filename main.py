@@ -15,6 +15,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 DEFAULT_MODEL = "qwen3:8b"
+FALLBACK_MODEL = "qwen3:8b"
 _CONFIG_PATH = Path(__file__).parent / "config.json"
 
 
@@ -251,8 +252,31 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.6.2
+                                             v0.6.3
 """)
+
+    # 起動時モデル存在チェック（Ollama 未起動時は例外を捕捉してスキップ）
+    try:
+        _resp = ollama.list()
+        if hasattr(_resp, "models"):
+            _available = [m.model for m in _resp.models if m.model]
+        else:
+            _available = [m.get("model", m.get("name", "")) for m in _resp.get("models", [])]
+        if model not in _available:
+            if FALLBACK_MODEL not in _available:
+                print(
+                    f"ERROR: Configured model '{model}' is not installed, "
+                    f"and fallback '{FALLBACK_MODEL}' is also missing.\n"
+                    f"Run: ollama pull {FALLBACK_MODEL}"
+                )
+                sys.exit(1)
+            print(f"[warn] Configured model '{model}' not found in Ollama.")
+            print(f"[warn] Falling back to '{FALLBACK_MODEL}' and updating config.json.")
+            model = FALLBACK_MODEL
+            save_config({"model": model})
+    except Exception:
+        pass  # Ollama 未起動等 → チェックをスキップ、最初のチャットでエラーが出る
+
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
     print()
