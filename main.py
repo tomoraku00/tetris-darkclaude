@@ -46,7 +46,7 @@ def get_installed_models() -> list[str]:
 _THINKING_VERBS = [
     "Thinking", "Cooking", "Brewing", "Cogitating",
     "Crunching", "Pondering", "Simmering",
-    "考え中", "思考中", "醸造中", "煮込み中",
+    "思考中", "考え中", "推論中", "解析中", "演算中", "思索中", "分析中",
 ]
 
 _CLEAR_LINE = "\r" + " " * 60 + "\r"
@@ -182,7 +182,7 @@ def main():
 | | | |/ _` | '__| |/ / |   | |/ _` | | | |/ _` |/ _ \
 | |_| | (_| | |  |   <| |___| | (_| | |_| | (_| |  __/
 |____/ \__,_|_|  |_|\_\\____|_|\__,_|\__,_|\__,_|\___|
-                                             v0.5.3
+                                             v0.5.3.1
 """)
     print(f"Model: {model}")
     print("Commands: /exit /quit /bye  |  /models  |  /model <name>  |  /setmodel <name>  |  /plan")
