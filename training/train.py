@@ -138,6 +138,7 @@ def log_vram(label: str) -> float:
 
 def train(args: argparse.Namespace) -> None:
     import torch
+    # 上で `import datasets` 済み（順序重要、削除禁止、CHANGELOG v0.8 参照）
     from unsloth import FastLanguageModel
     from transformers import TrainingArguments
     from trl import SFTTrainer

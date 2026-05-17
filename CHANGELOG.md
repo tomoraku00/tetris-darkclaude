@@ -56,6 +56,7 @@
 - `unsloth_zoo` の fused CE loss パッチは venv ローカル変更のため `pip install --upgrade unsloth` で上書きされる
 - eval_set の本番プロンプト 20 件はユーザーが手書きで追加する（現在 3 件）
 - deploy.py は v0.9 で実装予定
+- **v0.9 着手前にベースモデル選定議論が必要**: Qwen3-8B は RTX 4060 8GB では訓練不可と判明。本体 Ollama の `qwen3:8b` との整合性（4B で訓練したモデルを 8B ベースの本体と整合させるか、ハードウェアを増強するか等）をユーザーと Claude.ai で議論してから v0.9 を進めること
 
 ---
 

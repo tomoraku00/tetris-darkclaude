@@ -157,6 +157,36 @@ qwen2.5-coder:7b は tool calling 出力が不安定で、tool_calls フィー�
 
 ---
 
+## 運用で判明した観察記録
+
+実際に動かして判明した制約・挙動の記録。設計判断の根拠として残す。
+
+- **v0.8 で判明: Qwen3-8B 4bit QLoRA は RTX 4060 8GB では実用不可 (2026-05-18)**:
+  - max_seq_length 1024、empty_cache、fused CE loss target_gb=0.001/0.01 を
+    試したが、最良で 51s/step、50 step 以降 130s/step に悪化
+  - Qwen3-4B に切り替えると 1.3s/step で即解決
+  - 本番訓練は VRAM 8GB ハードウェア上では 4B が現実的、8B 訓練には
+    16GB 以上の VRAM が必要
+  - 結論: v0.9 以降のベースモデル選定議論が必要
+    （本体 Ollama の qwen3:8b との整合性をどうするか）
+
+- **v0.8 で観測: 訓練データに `<think>` が含まれないと reasoning が抑制される方向に動く (2026-05-18)**:
+  - alpaca 1000 件、Qwen3-4B、100 step の軽い訓練でも
+    訓練後モデルの `<think>` 内が空 `\n\n` に縮退した
+  - v0.9 の reasoning ratio 75/25 混合戦略の設計根拠を強化する観察
+
+- **v0.8 で踏んだ追加の Windows 罠 (2026-05-18)**（将来の同種エラー初動チェックリスト）:
+  - HuggingFace SSL エラー → `pip install truststore` + `truststore.inject_into_ssl()` で
+    Python の SSL に Windows OS 証明書ストアを注入して回避
+  - `hf_transfer` が Python SSL を bypass → `pip uninstall hf_transfer -y` で削除必須
+    （Unsloth が `HF_HUB_ENABLE_HF_TRANSFER=1` を import 時に強制設定するため env var では防げない）
+  - `hf-xet` も独自 SSL スタックで truststore を bypass → `HF_HUB_DISABLE_XET=1` +
+    `pip uninstall hf_xet -y` で対処
+  - bnb4bit + CPU dispatch エラー → `device_map={"": 0}` を `FastLanguageModel.from_pretrained`
+    に指定して GPU 固定（デフォルトの `device_map="sequential"` が競合）
+
+---
+
 ## ディレクトリ構造（目標）
 
 ```

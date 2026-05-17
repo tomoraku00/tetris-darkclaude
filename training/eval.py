@@ -48,6 +48,7 @@ def load_prompts(prompts_path: Path) -> list[dict]:
 
 def generate_response(model, tokenizer, prompt: str, max_new_tokens: int = 512) -> str:
     """1 つのプロンプトに対して応答を生成する。"""
+    # 上で `import datasets` 済み（順序重要、削除禁止、CHANGELOG v0.8 参照）
     from unsloth import FastLanguageModel
 
     FastLanguageModel.for_inference(model)
@@ -75,6 +76,7 @@ def generate_response(model, tokenizer, prompt: str, max_new_tokens: int = 512) 
 
 
 def load_base_model(model_name: str, max_seq_length: int):
+    # 上で `import datasets` 済み（順序重要、削除禁止、CHANGELOG v0.8 参照）
     from unsloth import FastLanguageModel
 
     print(f"[eval] ベースモデルロード: {model_name}")
