@@ -1,24 +1,50 @@
+"""OutputBuffer — FormattedText フラグメントを蓄積してスタイル付き出力を実現する。"""
 import threading
-from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import FormattedText
 
 
 class OutputBuffer:
-    """Thread-safe wrapper around a prompt_toolkit Buffer for TUI output display."""
+    """スレッドセーフなスタイル付き出力バッファ。
+
+    FormattedTextControl のコールバック (get_formatted_text) から参照される。
+    Window への参照を持ち、append/clear 時に自動スクロールを制御する。
+    """
 
     def __init__(self) -> None:
-        self._buf = Buffer(name="output", read_only=False)
+        self._fragments: list[tuple[str, str]] = []
         self._lock = threading.Lock()
+        self.window = None    # app.py で Window 生成後に設定
+        self.auto_scroll = True
 
-    @property
-    def buffer(self) -> Buffer:
-        return self._buf
+    # ---- 読み出し (UI スレッドから呼ばれる) ----
+
+    def get_formatted_text(self) -> FormattedText:
+        with self._lock:
+            return FormattedText(list(self._fragments))
+
+    # ---- 書き込み (background thread からも呼ばれる) ----
 
     def append(self, text: str) -> None:
+        """プレーンテキストを class:output スタイルで追加する。"""
         with self._lock:
-            new_text = self._buf.text + text
-            self._buf.set_document(Document(new_text, cursor_position=len(new_text)))
+            self._fragments.append(("class:output", text))
+        self._try_scroll()
+
+    def append_fragments(self, fragments: list[tuple[str, str]]) -> None:
+        """スタイル付きフラグメントリストをそのまま追加する。"""
+        with self._lock:
+            self._fragments.extend(fragments)
+        self._try_scroll()
 
     def clear(self) -> None:
         with self._lock:
-            self._buf.set_document(Document("", cursor_position=0))
+            self._fragments.clear()
+        if self.window is not None:
+            self.window.vertical_scroll = 0
+
+    # ---- 内部 ----
+
+    def _try_scroll(self) -> None:
+        """auto_scroll が有効なら出力末尾にジャンプする。"""
+        if self.auto_scroll and self.window is not None:
+            self.window.vertical_scroll = 999999
