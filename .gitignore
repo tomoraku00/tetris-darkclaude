@@ -16,13 +16,9 @@ training/eval_results/
 *.bak
 *.bak[0-9]*
 
-# 一発もの移行・パッチスクリプト (セッション中に作成)
-migrate_*.py
-patch_*.py
-append_*.py
-check_stage*.py
-update_*.py
-fix_*.py
+# Phase A6: session scripts (scripts/ ディレクトリ配下のセッション用スクリプト)
+scripts/*.py
+!scripts/README.md
 
 # v0.8 訓練キャッシュ
 training/unsloth_compiled_cache/
