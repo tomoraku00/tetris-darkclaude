@@ -1,5 +1,7 @@
 {
-  "model": "qwen3:8b",
-  "think_mode": "show",
+  "model": "qwen3.6",
+  "client": "openai",
+  "base_url": "http://localhost:8080",
+  "think_mode": "off",
   "logging_enabled": true
 }

@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-import ollama
+from clients import get_client
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -23,14 +23,13 @@ FALLBACK_MODEL = "qwen3:8b"
 DEFAULT_THINK_MODE = "show"
 THINK_MODES = ("show", "hide", "off")
 _CONFIG_PATH = Path(__file__).parent / "config.json"
-_think_fallback_warned: list[bool] = [False]
 DEFAULT_LOGGING_ENABLED = True
 
 
 def load_config() -> dict:
     if _CONFIG_PATH.exists():
         try:
-            return json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+            return json.loads(_CONFIG_PATH.read_text(encoding="utf-8-sig"))
         except Exception:
             pass
     return {"model": DEFAULT_MODEL}
@@ -57,14 +56,8 @@ def _to_dict(obj) -> dict:
         return {"raw_repr": str(obj)}
 
 
-def get_installed_models() -> list[str]:
-    try:
-        resp = ollama.list()
-        if hasattr(resp, "models"):
-            return [m.model for m in resp.models if m.model]
-        return [m.get("model", m.get("name", "")) for m in resp.get("models", [])]
-    except Exception:
-        return []
+def get_installed_models(client) -> list[str]:
+    return client.list_models()
 
 
 _THINKING_VERBS = [
@@ -247,6 +240,7 @@ def chat_turn(
     messages: list,
     user_input: str,
     model: str,
+    client,
     plan_mode: bool = False,
     think_mode: str = "show",
     allowed_write_paths: set[str] | None = None,
@@ -272,30 +266,12 @@ def chat_turn(
         llm_start = time.monotonic()
 
         with ThinkingIndicator():
-            if think_mode == "off":
-                try:
-                    response = ollama.chat(
-                        model=model,
-                        messages=send_messages,
-                        tools=TOOL_SCHEMAS,
-                        think=False,
-                    )
-                except TypeError:
-                    if not _think_fallback_warned[0]:
-                        print("[warn] ollama-python does not support 'think' param, "
-                              "falling back to /no_think prompt only")
-                        _think_fallback_warned[0] = True
-                    response = ollama.chat(
-                        model=model,
-                        messages=send_messages,
-                        tools=TOOL_SCHEMAS,
-                    )
-            else:
-                response = ollama.chat(
-                    model=model,
-                    messages=send_messages,
-                    tools=TOOL_SCHEMAS,
-                )
+            response = client.chat(
+                model=model,
+                messages=send_messages,
+                tools=TOOL_SCHEMAS,
+                think=(think_mode == "off"),
+            )
         msg = response["message"]
         messages.append(msg)
         if session_log:
@@ -449,24 +425,20 @@ def main():
 """)
 
     # 起動時モデル存在チェック（Ollama 未起動時は例外を捕捉してスキップ）
+    client = get_client(config)
     try:
-        _resp = ollama.list()
-        if hasattr(_resp, "models"):
-            _available = [m.model for m in _resp.models if m.model]
-        else:
-            _available = [m.get("model", m.get("name", "")) for m in _resp.get("models", [])]
-        if model not in _available:
+        _available = client.list_models()
+        if _available and model not in _available:
             if FALLBACK_MODEL not in _available:
                 print(
-                    f"ERROR: Configured model '{model}' is not installed, "
-                    f"and fallback '{FALLBACK_MODEL}' is also missing.\n"
-                    f"Run: ollama pull {FALLBACK_MODEL}"
+                    f"ERROR: Configured model '{model}' is not available, "
+                    f"and fallback '{FALLBACK_MODEL}' is also missing."
                 )
                 sys.exit(1)
-            print(f"[warn] Configured model '{model}' not found in Ollama.")
-            print(f"[warn] Falling back to '{FALLBACK_MODEL}' and updating config.json.")
+            print(f"[warn] Configured model '{model}' not available.")
+            print(f"[warn] Falling back to '{FALLBACK_MODEL}'.")
             model = FALLBACK_MODEL
-            save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
+            save_config({**config, "model": model})
     except Exception:
         pass  # Ollama 未起動等 → チェックをスキップ、最初のチャットでエラーが出る
 
@@ -530,7 +502,7 @@ def main():
                 if not name:
                     print(f"Current model: {model}")
                 else:
-                    installed = get_installed_models()
+                    installed = get_installed_models(client)
                     if name not in installed:
                         print(f"Warning: '{name}' not found.")
                         if installed:
@@ -546,7 +518,7 @@ def main():
                 if not name:
                     print("Usage: /setmodel <name>")
                 else:
-                    installed = get_installed_models()
+                    installed = get_installed_models(client)
                     if name not in installed:
                         print(f"Warning: '{name}' not found. config.json is unchanged.")
                         if installed:
@@ -605,7 +577,7 @@ def main():
                 continue
 
             chat_turn(
-                messages, user_input, model,
+                messages, user_input, model, client,
                 plan_mode=plan_mode,
                 think_mode=think_mode,
                 allowed_write_paths=allowed_write_paths,

@@ -380,3 +380,45 @@ DarkClaude / LightClaude を将来配布する際の名称方針。
 - `/model` や `/setmodel` でツール対応が不安定なモデルに切り替えた際に警告を表示
 - deepseek-r1:7b 等の他モデルも同様の検証が必要
 - content JSON フォールバックパーサーの実装（v0.6 権限承認システムと合わせて検討）
+
+## メモ
+
+
+---
+
+## Phase A: バックエンド刷新 (2026-05-18 完了)
+
+Ollama + qwen3:8b → llama.cpp + Qwen3.6-35B-A3B への移行を完遂。
+Phase B/B' で 3 モデル全滅したスモークテスト 3 件を、Qwen3.6 で 3/3 PASS。
+
+詳細は `DECISIONS.md` 2026-05-18 「バックエンドを Ollama から llama.cpp + Qwen3.6 に切り替え」 を参照。
+
+### 実装した変更
+
+- `clients/` ディレクトリ新設: LLMClient 抽象化レイヤー (OllamaClient/OpenAIClient 切替)
+- `main.py` リファクタ: ollama-python 直接呼び出し → `client.chat()` 経由
+- `start_llama_server.ps1` 追加: llama-server 起動スクリプト
+- `config.json` スキーマ拡張: `client`, `base_url` フィールド追加
+- `load_config()` を `utf-8-sig` 対応に (BOM 耐性)
+
+### バージョン位置づけ
+
+実装の規模・影響範囲は **v0.11 相当** (v0.10 UI 整備とは独立した軸の変更)。
+ただし正式な version bump は Phase A6 安定化後に判定。
+
+### 残課題 (Phase A6 候補)
+
+- [ ] 長時間連続会話 (5-10 ターン) の挙動確認 (KV cache 挙動、応答品質維持)
+- [ ] 複数ファイル編集タスクでの安定性
+- [ ] bash で時間のかかるコマンド (npm install 系) の挙動
+- [ ] エッジケース: 巨大ファイル読み込み、長い tool_call チェーン
+- [ ] llama-server クラッシュ時のリカバリ動作
+- [ ] save_config の 3 キー固定バグ修正 (config.json の追加フィールドを保護)
+
+### Phase A 後の運用
+
+- 戦略思考: claude.ai (サブスク固定費)
+- 実装: Claude Code + Ollama qwen-coder-cc (ローカル、無料)
+- DarkClaude 本番: llama-server + Qwen3.6 (本番タスク、無料)
+
+3 つの AI 経路が用途別に確立、月 30,000 円の Claude API 課金削減目標に直結。
