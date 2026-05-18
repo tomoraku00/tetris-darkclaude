@@ -1,5 +1,6 @@
-"""DarkClaude TUI Application — フルスクリーン REPL 本体。"""
+"""DarkClaude TUI Application (v0.9-beta) — フルスクリーン REPL 本体。"""
 import asyncio
+import atexit
 import json
 import sys
 import threading
@@ -8,23 +9,23 @@ from pathlib import Path
 
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.document import Document
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import InMemoryHistory
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout.containers import HSplit, Window
+from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
+from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import D
 from prompt_toolkit.layout.layout import Layout
-from prompt_toolkit.widgets import Frame
 
 from .style import DARKCLAUDE_STYLE
 from .banner import render_banner
 from .output import OutputBuffer
 from .status import make_status_fn
 from .chat import chat_turn, build_system_prompt
+from .approval import ApprovalDialog, decision_from_index
+from . import progress as prog
 from clients import get_client
 from session_log import SessionLog
-from tools.approval import request_approval
 
 # ---- 定数 ----
 
@@ -47,11 +48,12 @@ Commands:
   /logging [on|off|status]— ログ収集制御
 
 Keyboard:
-  Enter      — 送信
-  Ctrl+C     — 終了
-  Ctrl+L     — 出力クリア
-  Up / Down  — 入力履歴
-  PageUp / PageDown — 出力スクロール
+  Enter         — 送信（末尾に自動スクロール）
+  Ctrl+C        — 終了
+  Ctrl+L        — 出力クリア
+  Up / Down     — 入力履歴
+  PageUp / PageDown / マウスホイール — 出力スクロール
+  Home / End    — 最上 / 最下
 
 """
 
@@ -86,7 +88,6 @@ def _save_config(updates: dict) -> None:
 def run() -> None:
     """TUI を起動する。main.py から呼ばれる。"""
 
-    # Windows cp932 端末でも日本語を正しく表示する
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -101,11 +102,7 @@ def run() -> None:
     if not isinstance(logging_enabled, bool):
         logging_enabled = DEFAULT_LOGGING_ENABLED
 
-    _save_config({
-        "model": model,
-        "think_mode": think_mode,
-        "logging_enabled": logging_enabled,
-    })
+    _save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
 
     # ---- セッション状態 ----
     state: dict = {
@@ -113,7 +110,7 @@ def run() -> None:
         "think_mode": think_mode,
         "logging_enabled": logging_enabled,
         "plan_mode": False,
-        "thinking": "",   # ステータスラインの思考中表示
+        "thinking": "",
         "is_busy": False,
     }
     messages: list = []
@@ -137,7 +134,7 @@ def run() -> None:
     session_log = SessionLog(
         enabled=logging_enabled,
         base_dir=_data_dir,
-        dc_version="v0.9-alpha",
+        dc_version="v0.9-beta",
         model=model,
         plan_mode=state["plan_mode"],
         think_mode=think_mode,
@@ -145,51 +142,81 @@ def run() -> None:
     )
     session_log.session_start()
 
-    # ---- OutputBuffer & 入力 Buffer ----
+    # ---- OutputBuffer ----
     output = OutputBuffer()
-    input_buf = Buffer(name="input", multiline=False, history=InMemoryHistory())
     start_time = time.time()
 
-    # app / event_loop は起動後に格納する
+    # ---- 入力 Buffer ----
+    input_buf = Buffer(name="input", multiline=False, history=InMemoryHistory())
+
+    # ---- 承認 Dialog ----
+    approval = ApprovalDialog()
+
+    # app / loop は起動後に格納
     _app_ref: list[Application | None] = [None]
     _loop_ref: list[asyncio.AbstractEventLoop | None] = [None]
 
     # ---- ステータスライン ----
     get_status = make_status_fn(state, start_time)
 
-    # ---- 承認関数（background thread から run_in_terminal 経由で呼ぶ） ----
+    # ---- 承認関数 (TUI ネイティブ Dialog 版) ----
     def _make_approval_fn(app: Application) -> object:
         def approval_fn(name: str, args: dict) -> str:
             loop = _loop_ref[0]
             if loop is None:
+                # フォールバック: questionary 直接呼び出し
+                from tools.approval import request_approval
                 return request_approval(name, args)
 
-            result_holder: list = [None]
+            # コマンド文字列の組み立て
+            if name == "bash":
+                cmd_text = args.get("command", "")
+                title = "Bash command"
+                emphasis = cmd_text[:60]
+            elif name == "write_file":
+                path = args.get("path", "")
+                cmd_text = f"Write to: {path}"
+                title = "Write file"
+                emphasis = path
+            elif name == "str_replace":
+                path = args.get("path", "")
+                old_s = str(args.get("old_str", ""))[:80].replace("\n", "↵")
+                new_s = str(args.get("new_str", ""))[:80].replace("\n", "↵")
+                cmd_text = f"Path: {path}\n- {old_s}\n+ {new_s}"
+                title = "Edit file"
+                emphasis = path
+            else:
+                cmd_text = str(args)[:120]
+                title = name
+                emphasis = name
 
-            def _do() -> None:
-                result_holder[0] = request_approval(name, args)
+            result_holder: list[int] = [-1]
+            done_ev = threading.Event()
 
-            try:
-                future = asyncio.run_coroutine_threadsafe(
-                    app.run_in_terminal(_do), loop
-                )
-                future.result(timeout=300)
-            except Exception:
-                # フォールバック: 直接呼ぶ（表示が乱れる可能性あり）
-                return request_approval(name, args)
+            async def _show_dialog() -> None:
+                idx = await approval.show(title, cmd_text, emphasis=emphasis)
+                result_holder[0] = idx
+                done_ev.set()
+                app.invalidate()
 
-            return result_holder[0] or "deny"
+            future = asyncio.run_coroutine_threadsafe(_show_dialog(), loop)
+            done_ev.wait(timeout=300)
+
+            idx = result_holder[0]
+            if idx < 0:
+                return "deny"
+            return decision_from_index(idx)
 
         return approval_fn
 
     # ---- コマンドハンドラ ----
     def handle_command(text: str) -> bool:
-        """/ コマンドを処理。処理した場合 True を返す。"""
         app = _app_ref[0]
 
         if text in ("/exit", "/quit", "/bye"):
             output.append("Goodbye!\n")
             session_log.close("user_exit")
+            prog.clear()
             if app:
                 app.exit()
             return True
@@ -260,9 +287,7 @@ def run() -> None:
             elif arg in THINK_MODES:
                 new_mode = arg
             else:
-                output.append(
-                    f"ERROR: invalid think mode '{arg}'. Use: show | hide | off\n\n"
-                )
+                output.append(f"ERROR: invalid think mode '{arg}'. Use: show | hide | off\n\n")
                 return True
             old_mode = state["think_mode"]
             state["think_mode"] = new_mode
@@ -286,9 +311,7 @@ def run() -> None:
             elif not arg:
                 enabled = session_log.toggle()
             else:
-                output.append(
-                    f"ERROR: invalid logging arg '{arg}'. Use: on | off | status\n\n"
-                )
+                output.append(f"ERROR: invalid logging arg '{arg}'. Use: on | off | status\n\n")
                 return True
             state["logging_enabled"] = enabled
             status_str = "ON" if enabled else "OFF"
@@ -300,7 +323,7 @@ def run() -> None:
 
         return False
 
-    # ---- チャット実行（background thread） ----
+    # ---- チャット実行 ----
     def _do_chat(text: str, app: Application) -> None:
         approval_fn = _make_approval_fn(app)
         try:
@@ -325,93 +348,35 @@ def run() -> None:
             state["is_busy"] = False
             app.invalidate()
 
-    # ---- KeyBindings ----
-    kb = KeyBindings()
+    # ---- Layout パーツ ----
 
-    @kb.add("enter")
-    def _on_enter(event):
-        if state["is_busy"]:
-            return
-        text = input_buf.text.strip()
-        if not text:
-            return
-        # 履歴に保存してからリセット
-        input_buf.append_to_history()
-        input_buf.reset()
-
-        if handle_command(text):
-            return
-
-        state["is_busy"] = True
-        t = threading.Thread(
-            target=_do_chat, args=(text, event.app), daemon=True
-        )
-        t.start()
-
-    @kb.add("c-c")
-    @kb.add("c-d")
-    def _on_exit(event):
-        session_log.close("ctrl_c")
-        event.app.exit()
-
-    @kb.add("c-l")
-    def _on_clear(event):
-        output.clear()
-
-    @kb.add("up")
-    def _on_up(event):
-        input_buf.history_backward()
-
-    @kb.add("down")
-    def _on_down(event):
-        input_buf.history_forward()
-
-    @kb.add("pageup")
-    def _on_pageup(event):
-        buf = output.buffer
-        text = buf.text
-        pos = buf.cursor_position
-        try:
-            page_h = max(5, event.app.output.get_size().rows - 5)
-        except Exception:
-            page_h = 20
-        for _ in range(page_h):
-            prev = text.rfind("\n", 0, pos - 1)
-            if prev < 0:
-                pos = 0
-                break
-            pos = prev
-        buf.set_document(Document(text, cursor_position=pos))
-
-    @kb.add("pagedown")
-    def _on_pagedown(event):
-        buf = output.buffer
-        text = buf.text
-        pos = buf.cursor_position
-        try:
-            page_h = max(5, event.app.output.get_size().rows - 5)
-        except Exception:
-            page_h = 20
-        for _ in range(page_h):
-            nxt = text.find("\n", pos + 1)
-            if nxt < 0:
-                pos = len(text)
-                break
-            pos = nxt
-        buf.set_document(Document(text, cursor_position=pos))
-
-    # ---- Layout ----
+    # 出力エリア: FormattedTextControl でスタイル付き描画
     output_window = Window(
-        content=BufferControl(buffer=output.buffer, focusable=False),
+        content=FormattedTextControl(output.get_formatted_text),
         wrap_lines=True,
         height=D(weight=1),
     )
-    separator = Window(height=1, char="─", style="class:separator")
-    input_window = Window(
-        content=BufferControl(buffer=input_buf, focusable=True),
-        height=1,
-        style="class:input",
+    output.window = output_window  # auto_scroll 用に参照を渡す
+
+    # 承認 Dialog コンテナ (is_active=True の時だけ表示)
+    approval_container = approval.make_container()
+
+    # 入力エリア: Frame の代わりに 上ライン + 入力行
+    input_area = HSplit([
+        Window(height=1, char="─", style="class:separator"),
+        Window(
+            content=BufferControl(buffer=input_buf, focusable=True),
+            height=1,
+            style="class:input",
+        ),
+    ])
+
+    # 承認中は入力エリアを非表示
+    conditional_input = ConditionalContainer(
+        content=input_area,
+        filter=Condition(lambda: not approval.is_active),
     )
+
     status_window = Window(
         content=FormattedTextControl(get_status),
         height=1,
@@ -421,25 +386,113 @@ def run() -> None:
     layout = Layout(
         HSplit([
             output_window,
-            separator,
-            Frame(input_window),
+            approval_container,
+            conditional_input,
             status_window,
         ]),
-        focused_element=input_window,
+        focused_element=input_buf,
     )
+
+    # ---- KeyBindings ----
+    kb = KeyBindings()
+    not_approval = Condition(lambda: not approval.is_active)
+
+    @kb.add("enter", filter=not_approval)
+    def _on_enter(event):
+        if state["is_busy"]:
+            return
+        text = input_buf.text.strip()
+        if not text:
+            return
+        input_buf.append_to_history()
+        input_buf.reset()
+        # Enter 送信で末尾に戻す
+        output.auto_scroll = True
+        output_window.vertical_scroll = 999999
+
+        if handle_command(text):
+            return
+
+        state["is_busy"] = True
+        t = threading.Thread(target=_do_chat, args=(text, event.app), daemon=True)
+        t.start()
+
+    @kb.add("c-c")
+    @kb.add("c-d")
+    def _on_exit(event):
+        session_log.close("ctrl_c")
+        prog.clear()
+        event.app.exit()
+
+    @kb.add("c-l")
+    def _on_clear(event):
+        output.clear()
+
+    @kb.add("up", filter=not_approval)
+    def _on_up(event):
+        input_buf.history_backward()
+
+    @kb.add("down", filter=not_approval)
+    def _on_down(event):
+        input_buf.history_forward()
+
+    # ---- スクロール KeyBindings ----
+
+    @kb.add("pageup")
+    def _on_pageup(event):
+        output.auto_scroll = False
+        if output_window.render_info:
+            page_h = output_window.render_info.window_height
+            output_window.vertical_scroll = max(
+                0, output_window.vertical_scroll - page_h
+            )
+        event.app.invalidate()
+
+    @kb.add("pagedown")
+    def _on_pagedown(event):
+        if output_window.render_info:
+            page_h = output_window.render_info.window_height
+            content_h = output_window.render_info.content_height
+            new_scroll = min(
+                max(0, content_h - page_h),
+                output_window.vertical_scroll + page_h,
+            )
+            output_window.vertical_scroll = new_scroll
+            # 末尾まで来たら auto_scroll を再有効化
+            if new_scroll >= max(0, content_h - page_h):
+                output.auto_scroll = True
+        event.app.invalidate()
+
+    @kb.add("home")
+    def _on_home(event):
+        output.auto_scroll = False
+        output_window.vertical_scroll = 0
+        event.app.invalidate()
+
+    @kb.add("end")
+    def _on_end(event):
+        output.auto_scroll = True
+        output_window.vertical_scroll = 999999
+        event.app.invalidate()
+
+    # 承認 Dialog の KeyBindings をマージ
+    merged_kb = merge_key_bindings([kb, approval.make_keybindings()])
 
     # ---- Application ----
     app = Application(
         layout=layout,
-        key_bindings=kb,
+        key_bindings=merged_kb,
         style=DARKCLAUDE_STYLE,
         full_screen=True,
-        mouse_support=False,
+        mouse_support=True,   # マウスホイールスクロール有効化
     )
     _app_ref[0] = app
 
+    # 終了時に必ずタスクバー進捗をクリア
+    atexit.register(prog.clear)
+
     # ---- 初期表示 ----
-    output.append(render_banner(config) + "\n")
+    output.append_fragments(list(render_banner(config)))
     if session_log.enabled and session_log.file_path is not None:
         output.append(f"[logging] Recording to {session_log.file_path}\n\n")
     else:
@@ -454,6 +507,8 @@ def run() -> None:
         asyncio.run(_run_async())
     except KeyboardInterrupt:
         session_log.close("ctrl_c")
+        prog.clear()
     except Exception:
         session_log.close("error")
+        prog.clear()
         raise
