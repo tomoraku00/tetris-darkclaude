@@ -147,8 +147,7 @@ def run() -> None:
 
     # ---- OutputBuffer & 入力 Buffer ----
     output = OutputBuffer()
-    input_history = InMemoryHistory()
-    input_buf = Buffer(name="input", multiline=False, history=input_history)
+    input_buf = Buffer(name="input", multiline=False, history=InMemoryHistory())
     start_time = time.time()
 
     # app / event_loop は起動後に格納する
@@ -166,11 +165,9 @@ def run() -> None:
                 return request_approval(name, args)
 
             result_holder: list = [None]
-            done = threading.Event()
 
             def _do() -> None:
                 result_holder[0] = request_approval(name, args)
-                done.set()
 
             try:
                 future = asyncio.run_coroutine_threadsafe(
@@ -339,7 +336,7 @@ def run() -> None:
         if not text:
             return
         # 履歴に保存してからリセット
-        input_history.store_string(text)
+        input_buf.append_to_history()
         input_buf.reset()
 
         if handle_command(text):
@@ -425,7 +422,7 @@ def run() -> None:
         HSplit([
             output_window,
             separator,
-            Frame(input_window, style="class:frame.border"),
+            Frame(input_window),
             status_window,
         ]),
         focused_element=input_window,
@@ -450,7 +447,7 @@ def run() -> None:
 
     # ---- 起動 ----
     async def _run_async() -> None:
-        _loop_ref[0] = asyncio.get_event_loop()
+        _loop_ref[0] = asyncio.get_running_loop()
         await app.run_async()
 
     try:
