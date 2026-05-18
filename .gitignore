@@ -22,6 +22,7 @@ patch_*.py
 append_*.py
 check_stage*.py
 update_*.py
+fix_*.py
 
 # v0.8 訓練キャッシュ
 training/unsloth_compiled_cache/
