@@ -35,9 +35,21 @@ def load_config() -> dict:
     return {"model": DEFAULT_MODEL}
 
 
-def save_config(config: dict) -> None:
+def save_config(updates: dict) -> None:
+    """Update config.json with the given fields, preserving existing fields.
+
+    Callers may pass partial updates (e.g. {"model": "..."}); any keys not
+    present in updates are kept as-is. Tolerant of BOM in the existing file.
+    """
+    try:
+        existing = json.loads(_CONFIG_PATH.read_text(encoding="utf-8-sig"))
+        if not isinstance(existing, dict):
+            existing = {}
+    except Exception:
+        existing = {}
+    existing.update(updates)
     _CONFIG_PATH.write_text(
-        json.dumps(config, ensure_ascii=False, indent=2),
+        json.dumps(existing, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 

@@ -10,3 +10,18 @@ training/.venv/
 training/prepared/
 training/output/
 training/eval_results/
+
+# Phase A6 追加 (2026-05-18)
+# バックアップファイル
+*.bak
+*.bak[0-9]*
+
+# 一発もの移行・パッチスクリプト (セッション中に作成)
+migrate_*.py
+patch_*.py
+append_*.py
+check_stage*.py
+update_*.py
+
+# v0.8 訓練キャッシュ
+training/unsloth_compiled_cache/
