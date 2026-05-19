@@ -476,7 +476,7 @@ def chat_turn(
                             args.get("old_str", ""), args.get("new_str", ""), 1
                         )
                     if new_content is not None:
-                        diff_frags = render_diff(pre_edit_content, new_content)
+                        diff_frags = render_diff(pre_edit_content, new_content, width=_get_term_width(app))
                         output.append_fragments(diff_frags)
                 else:
                     output.append_fragments(_fmt_tool_result(result, is_error))
