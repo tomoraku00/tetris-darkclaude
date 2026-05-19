@@ -3,7 +3,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.application.current import get_app
 
 
-def make_status_fn(state: dict, start_time: float):
+def make_status_fn(state: dict, start_time: float, copy_mode=None):
     """ステータスライン用の get_status() クロージャを生成して返す。"""
 
     def get_status() -> FormattedText:
@@ -22,17 +22,24 @@ def make_status_fn(state: dict, start_time: float):
 
         right_text = f"⏱ {mins}m {secs:02d}s "
 
-        left_parts: list[tuple[str, str]] = [
-            ("class:status.value", f" {model}"),
-            ("class:status", " · "),
-            ("class:status.mode", f"Phase {phase}"),
-            ("class:muted", "  ·  Shift+drag to select"),
-        ]
-        if thinking:
-            left_parts += [
-                ("class:status", " · "),
-                ("class:thinking", thinking),
+        # コピーモード中はモード情報を前面に出す
+        if copy_mode is not None and copy_mode.is_active:
+            hint = copy_mode.get_status_hint()
+            left_parts: list[tuple[str, str]] = [
+                ("class:copy_mode.cursor", hint),
             ]
+        else:
+            left_parts = [
+                ("class:status.value", f" {model}"),
+                ("class:status", " · "),
+                ("class:status.mode", f"Phase {phase}"),
+                ("class:muted", "  ·  Ctrl+Y: copy mode"),
+            ]
+            if thinking:
+                left_parts += [
+                    ("class:status", " · "),
+                    ("class:thinking", thinking),
+                ]
 
         # 左右の文字数を概算してパディング
         left_len = sum(len(t) for _, t in left_parts)

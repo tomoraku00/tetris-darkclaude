@@ -65,4 +65,8 @@ DARKCLAUDE_STYLE = Style.from_dict({
 
     # === 入力 (背景指定削除、透明) ===
     "input":                "#e0e0e0",
+
+    # === コピーモード ===
+    "copy_mode.cursor":     "bg:#ffffff #000000",
+    "copy_mode.selection":  "bg:#b095d5 #000000",
 })

@@ -23,6 +23,7 @@ from .output import OutputBuffer
 from .status import make_status_fn
 from .chat import chat_turn, build_system_prompt
 from .approval import ApprovalDialog, decision_from_index
+from .copy_mode import CopyMode
 from . import progress as prog
 from clients import get_client
 from session_log import SessionLog
@@ -54,6 +55,12 @@ Keyboard:
   Up / Down     — 入力履歴
   PageUp / PageDown / マウスホイール — 出力スクロール
   Home / End    — 最上 / 最下
+  Ctrl+Y        — コピーモード開始
+    ↑↓←→       — カーソル移動
+    Shift+↑↓←→ — 選択範囲拡張
+    v           — 選択開始 (Vim 風)
+    y / Enter   — 選択テキストをコピー → 終了
+    Esc / q     — コピーモード終了 (コピーしない)
 
 """
 
@@ -152,12 +159,15 @@ def run() -> None:
     # ---- 承認 Dialog ----
     approval = ApprovalDialog()
 
+    # ---- コピーモード ----
+    copy_mode = CopyMode()
+
     # app / loop は起動後に格納
     _app_ref: list[Application | None] = [None]
     _loop_ref: list[asyncio.AbstractEventLoop | None] = [None]
 
     # ---- ステータスライン ----
-    get_status = make_status_fn(state, start_time)
+    get_status = make_status_fn(state, start_time, copy_mode=copy_mode)
 
     # ---- 承認関数 (TUI ネイティブ Dialog 版) ----
     def _make_approval_fn(app: Application) -> object:
@@ -372,10 +382,10 @@ def run() -> None:
         Window(height=1, char="─", style="class:separator"),
     ])
 
-    # 承認中は入力エリアを非表示
+    # 承認中 or コピーモード中は入力エリアを非表示
     conditional_input = ConditionalContainer(
         content=input_area,
-        filter=Condition(lambda: not approval.is_active),
+        filter=Condition(lambda: not approval.is_active and not copy_mode.is_active),
     )
 
     status_window = Window(
@@ -476,8 +486,15 @@ def run() -> None:
         output_window.vertical_scroll = 999999
         event.app.invalidate()
 
-    # 承認 Dialog の KeyBindings をマージ
-    merged_kb = merge_key_bindings([kb, approval.make_keybindings()])
+    @kb.add("c-y", eager=True)
+    def _enter_copy_mode(event):
+        """Ctrl+Y でコピーモードに入る。"""
+        if not copy_mode.is_active and not approval.is_active:
+            copy_mode.enter(output.get_plain_lines())
+            event.app.invalidate()
+
+    # 承認 Dialog + コピーモードの KeyBindings をマージ
+    merged_kb = merge_key_bindings([kb, approval.make_keybindings(), copy_mode.make_keybindings()])
 
     # ---- Application ----
     app = Application(

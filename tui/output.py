@@ -44,6 +44,12 @@ class OutputBuffer:
 
     # ---- 内部 ----
 
+    def get_plain_lines(self) -> list[str]:
+        """コピーモード用: プレーンテキストを行リストで返す。"""
+        with self._lock:
+            text = "".join(t for _, t in self._fragments)
+        return text.split("\n")
+
     def _try_scroll(self) -> None:
         """auto_scroll が有効なら出力末尾にジャンプする。"""
         if self.auto_scroll and self.window is not None:
