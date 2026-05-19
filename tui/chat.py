@@ -141,12 +141,12 @@ def render_assistant_text(text: str, app) -> list[tuple[str, str]]:
         stripped = line.strip()
         if stripped.startswith("```"):
             # コードブロック区切り
-            border = ("class:code_block.border", "─" * min(width, 80) + "\n")
+            border = ("class:code_block.border", "─" * width + "\n")
             fragments.append(border)
             in_code_block = not in_code_block
             continue
         if in_code_block:
-            fragments.append(("class:code_block", line.ljust(min(width, 80))))
+            fragments.append(("class:code_block", line.ljust(width)))
             fragments.append(("", "\n"))
         else:
             fragments.append(("class:assistant", line))
