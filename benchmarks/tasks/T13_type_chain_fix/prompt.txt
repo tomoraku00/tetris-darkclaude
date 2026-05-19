@@ -1,0 +1,8 @@
+shapes.py に mypy --strict で 30+ の型エラーがあります。
+全ての型エラーを修正してください。
+
+成功条件:
+- mypy --strict shapes.py で 0 エラー
+- pytest test_shapes.py で全テスト通過 (8 件)
+- Any 型を使わない
+- 型注釈は適切に (Optional, list[Shape], float など)
