@@ -26,6 +26,7 @@ def make_status_fn(state: dict, start_time: float):
             ("class:status.value", f" {model}"),
             ("class:status", " · "),
             ("class:status.mode", f"Phase {phase}"),
+            ("class:muted", "  ·  Shift+drag to select"),
         ]
         if thinking:
             left_parts += [
