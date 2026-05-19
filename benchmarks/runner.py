@@ -43,6 +43,18 @@ class BenchmarkRunner:
         self.base_url = base_url
         self.results: dict = {}
 
+    @staticmethod
+    def _speed_score(duration: float) -> float:
+        if duration < 30:
+            return 1.0
+        if duration < 60:
+            return 0.8
+        if duration < 120:
+            return 0.5
+        if duration < 300:
+            return 0.2
+        return 0.0
+
     def run_task(self, task_id: str) -> dict:
         task_dir = self.tasks_dir / task_id
         if not task_dir.exists():
@@ -68,6 +80,7 @@ class BenchmarkRunner:
                 return {
                     "completed": False,
                     "score": 0.0,
+                    "speed_score": 0.0,
                     "duration_sec": round(duration, 1),
                     "tool_calls": 0,
                     "error": dc_result["error"],
@@ -84,6 +97,7 @@ class BenchmarkRunner:
             return {
                 "completed": score >= 0.5,
                 "score": round(score, 3),
+                "speed_score": self._speed_score(duration),
                 "duration_sec": round(duration, 1),
                 "tool_calls": dc_result.get("tool_calls", 0),
                 "output": dc_result.get("output", "")[:500],
@@ -169,13 +183,16 @@ class BenchmarkRunner:
         completed = sum(1 for r in self.results.values() if r.get("completed"))
         total_duration = sum(r.get("duration_sec", 0) for r in self.results.values())
         scores = [r.get("score", 0) for r in self.results.values()]
+        speed_scores = [r.get("speed_score", 0) for r in self.results.values()]
         avg_score = sum(scores) / max(len(scores), 1)
+        avg_speed_score = sum(speed_scores) / max(len(speed_scores), 1)
         return {
             "completed": completed,
             "total": len(self.results),
             "failed": len(self.results) - completed,
             "total_duration_sec": round(total_duration, 1),
             "avg_score": round(avg_score, 3),
+            "avg_speed_score": round(avg_speed_score, 3),
         }
 
 
@@ -193,7 +210,7 @@ def main() -> None:
     fixtures_dir = Path(__file__).parent / "fixtures"
 
     if args.tasks == "all":
-        task_ids = sorted(d.name for d in tasks_dir.iterdir() if d.is_dir())
+        task_ids = sorted(d.name for d in tasks_dir.iterdir() if d.is_dir() and not d.name.startswith("_"))
     else:
         task_ids = [t.strip() for t in args.tasks.split(",")]
 
