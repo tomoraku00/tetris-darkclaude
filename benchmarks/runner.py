@@ -49,7 +49,7 @@ class BenchmarkRunner:
             return {"error": f"task_not_found: {task_id}"}
 
         print(f"  setup...")
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             workdir = Path(tmp)
 
             try:
