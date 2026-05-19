@@ -16,6 +16,7 @@ from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, Windo
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import D
 from prompt_toolkit.layout.layout import Layout
+from prompt_toolkit.layout.margins import ScrollbarMargin
 
 from .style import DARKCLAUDE_STYLE
 from .banner import render_banner
@@ -352,9 +353,10 @@ def run() -> None:
 
     # 出力エリア: FormattedTextControl でスタイル付き描画
     output_window = Window(
-        content=FormattedTextControl(output.get_formatted_text),
+        content=FormattedTextControl(output.get_formatted_text, focusable=False),
         wrap_lines=True,
         height=D(weight=1),
+        right_margins=[ScrollbarMargin(display_arrows=True)],
     )
     output.window = output_window  # auto_scroll 用に参照を渡す
 
@@ -439,7 +441,7 @@ def run() -> None:
 
     # ---- スクロール KeyBindings ----
 
-    @kb.add("pageup")
+    @kb.add("pageup", eager=True)
     def _on_pageup(event):
         output.auto_scroll = False
         if output_window.render_info:
@@ -449,7 +451,7 @@ def run() -> None:
             )
         event.app.invalidate()
 
-    @kb.add("pagedown")
+    @kb.add("pagedown", eager=True)
     def _on_pagedown(event):
         if output_window.render_info:
             page_h = output_window.render_info.window_height
@@ -464,13 +466,13 @@ def run() -> None:
                 output.auto_scroll = True
         event.app.invalidate()
 
-    @kb.add("home")
+    @kb.add("home", eager=True)
     def _on_home(event):
         output.auto_scroll = False
         output_window.vertical_scroll = 0
         event.app.invalidate()
 
-    @kb.add("end")
+    @kb.add("end", eager=True)
     def _on_end(event):
         output.auto_scroll = True
         output_window.vertical_scroll = 999999
