@@ -1,0 +1,9 @@
+counter.py の AsyncCounter に race condition があります。
+test_counter.py が 20 回連続で通過するように修正してください。
+
+README.md にバグの詳細があります。
+
+成功条件:
+- pytest test_counter.py で test_concurrent_correctness が通る
+- asyncio.Lock または asyncio.Queue が使われている
+- 元のインターフェース (increment, run_concurrent) のシグネチャが変わっていない
