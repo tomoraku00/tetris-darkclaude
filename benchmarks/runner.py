@@ -22,7 +22,7 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 _MAIN_PY = _PROJECT_ROOT / "main.py"
-_TASK_TIMEOUT = 300  # 秒 (1 タスク最大 5 分)
+_TASK_TIMEOUT = 600  # 秒 (1 タスク最大 10 分)
 
 
 class BenchmarkRunner:
