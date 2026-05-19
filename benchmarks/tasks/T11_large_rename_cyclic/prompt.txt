@@ -1,0 +1,13 @@
+core/base.py の DataProvider クラスを DataSource に rename してください。
+依存するファイル全て (providers/, handlers/, tests/) も整合性保って更新してください。
+
+ヒント:
+- providers/cache.py と core/middleware.py の間に循環依存があります
+  (cache → middleware → sql_provider → cache)
+- rename 後、循環依存を解消してください (cache.py の middleware import を遅延 import にするなど)
+- 既存のテスト全てが pytest tests/ で通過するように
+
+成功条件:
+- pytest tests/ で全テスト通過
+- "DataProvider" という名前がコード内に残っていない (コメント除く)
+- 循環依存が解消されている (python -c "import sys; sys.path.insert(0,'.'); import providers" がエラーにならない)
