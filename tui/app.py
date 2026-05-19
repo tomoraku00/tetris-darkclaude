@@ -361,7 +361,7 @@ def run() -> None:
     # 承認 Dialog コンテナ (is_active=True の時だけ表示)
     approval_container = approval.make_container()
 
-    # 入力エリア: Frame の代わりに 上ライン + 入力行
+    # 入力エリア: 上ライン + 入力行 + 下ライン
     input_area = HSplit([
         Window(height=1, char="─", style="class:separator"),
         Window(
@@ -369,6 +369,7 @@ def run() -> None:
             height=1,
             style="class:input",
         ),
+        Window(height=1, char="─", style="class:separator"),
     ])
 
     # 承認中は入力エリアを非表示
