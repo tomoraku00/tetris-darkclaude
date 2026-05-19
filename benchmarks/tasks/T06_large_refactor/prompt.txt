@@ -1,0 +1,20 @@
+multi_refactor/processors/ ディレクトリには 5 つのプロセッサクラスがある:
+TextProcessor, CsvProcessor, JsonProcessor, XmlProcessor, BinaryProcessor
+
+これらはすべて同じ構造を持っている:
+- __init__(self, config: dict): 初期化
+- validate(self, data: str) -> bool: 検証
+- process(self, data: str) -> dict: メイン処理 (validate → _transform → _format_output)
+- _transform(self, data: str): 変換（クラスごとに異なる）
+- _format_output(self, result): 出力整形（クラスごとに異なる）
+- get_errors(self) -> list: エラー一覧取得
+
+タスク:
+1. multi_refactor/processors/base_processor.py を新規作成し、共通ロジック (validate の基本チェック、process のフロー制御、get_errors) を持つ BaseProcessor 抽象基底クラスを実装する
+2. 5 つのプロセッサクラスを BaseProcessor を継承するようにリファクタリングする（_transform と _format_output のみオーバーライド）
+3. multi_refactor/pipeline.py が引き続き正しく動作することを確認する
+
+注意:
+- 既存の public インターフェース (process, validate, get_errors) の戻り値は変えないこと
+- _transform と _format_output は各クラスの実装を維持すること
+- BaseProcessor は abc.ABC と abc.abstractmethod を使うこと
