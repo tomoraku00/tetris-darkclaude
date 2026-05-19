@@ -22,3 +22,6 @@ scripts/*.py
 
 # v0.8 訓練キャッシュ
 training/unsloth_compiled_cache/
+
+# ベンチマークレポート (バージョン比較用のベースライン以外は除外)
+benchmarks/reports/*.json
