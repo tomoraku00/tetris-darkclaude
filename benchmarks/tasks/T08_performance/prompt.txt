@@ -1,0 +1,14 @@
+finder.py に find_duplicates, find_common_elements, count_unique の 3 つの関数がある。
+benchmark.py を実行すると処理時間が表示される。
+
+タスク:
+1. benchmark.py を実行して現在のパフォーマンスを確認する
+2. finder.py のボトルネックを特定する（コメントに計算量を記述）
+3. 3 つの関数すべてを O(n) または O(n log n) に改善する
+4. test_finder.py を実行してすべてのテストが通過することを確認する
+5. 改善後に benchmark.py を再実行して改善を確認する
+
+要件:
+- n=2500 で find_duplicates + find_common_elements + count_unique の合計が 0.5 秒以内
+- test_finder.py の全テストが通過すること
+- 関数のシグネチャ（引数・戻り値）は変えないこと
