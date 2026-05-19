@@ -1,0 +1,19 @@
+api_extend/ ディレクトリに既存の REST 風 API がある:
+- api.py: get_user, list_users, create_user + _USERS/_POSTS データ
+- handlers.py: handle_get_user, handle_list_users, handle_create_user
+- tests/test_api.py: 既存テスト 3 件
+
+タスク:
+1. api.py に以下の 2 つの関数を追加する:
+   - get_user_posts(user_id: int) -> list[dict]: 指定ユーザーの投稿一覧を返す（ユーザーが存在しない場合は None）
+   - delete_user(user_id: int) -> bool: ユーザーを削除して True を返す（存在しない場合は False）
+
+2. handlers.py に以下の 2 つのハンドラを追加する:
+   - handle_get_user_posts(user_id: int) -> dict: {"status": 200, "data": [...]} または {"status": 404, "error": ...}
+   - handle_delete_user(user_id: int) -> dict: {"status": 200, "data": {"deleted": True}} または {"status": 404, "error": ...}
+
+3. tests/test_api.py に新しいテストを 3 件以上追加する（新機能をカバーすること）
+
+4. 既存の 3 件のテストが引き続き通過することを確認する
+
+注意: api.py の _POSTS 辞書はすでに user_id フィールドを持っている。それを活用すること。
