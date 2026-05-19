@@ -16,7 +16,6 @@ from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, Windo
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import D
 from prompt_toolkit.layout.layout import Layout
-from prompt_toolkit.layout.margins import ScrollbarMargin
 
 from .style import DARKCLAUDE_STYLE
 from .banner import render_banner
@@ -356,7 +355,6 @@ def run() -> None:
         content=FormattedTextControl(output.get_formatted_text, focusable=False),
         wrap_lines=True,
         height=D(weight=1),
-        right_margins=[ScrollbarMargin(display_arrows=True)],
     )
     output.window = output_window  # auto_scroll 用に参照を渡す
 
