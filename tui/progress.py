@@ -12,12 +12,22 @@ def set_progress(state: int, value: int = 0) -> None:
         3 = indeterminate (working、橙の流れる表示)
         4 = warning (yellow)
     value: 0-100、state=1/2/4 で使用
+
+    prompt_toolkit full_screen 時は sys.stdout がバッファされるため
+    sys.__stdout__ を使ってターミナルに直接書き込む。
     """
+    seq = f"\x1b]9;4;{state};{value}\x07"
     try:
-        sys.stdout.write(f"\x1b]9;4;{state};{value}\x07")
-        sys.stdout.flush()
+        # prompt_toolkit の出力バッファをバイパスして実ターミナルへ書き込む
+        out = getattr(sys, "__stdout__", None) or sys.stdout
+        out.write(seq)
+        out.flush()
     except Exception:
-        pass
+        try:
+            sys.stdout.write(seq)
+            sys.stdout.flush()
+        except Exception:
+            pass
 
 
 def working() -> None:
