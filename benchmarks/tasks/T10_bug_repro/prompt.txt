@@ -1,0 +1,15 @@
+README.md にバグレポートがある。list_utils.py の flatten_nested 関数の depth 引数が機能しない。
+
+タスク:
+1. README.md を読んでバグの内容を理解する
+2. list_utils.py を読んでバグの原因を特定する
+3. test_list_utils.py を新規作成して、バグを再現するテストを書く
+   （少なくとも depth=1 の挙動を検証するテストを含めること）
+4. list_utils.py のバグを修正する
+5. pytest test_list_utils.py を実行してテストが通過することを確認する
+
+テストには以下のケースを含めること:
+- depth=1 で 1 段階のみ展開されること
+- depth=2 で 2 段階まで展開されること
+- depth=-1 で完全フラット化されること
+- depth=0 でフラット化されないこと
