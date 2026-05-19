@@ -1,9 +1,14 @@
 """ベンチマーク実行スクリプト
 
 使い方:
-    python benchmarks/runner.py --version v0.9-beta --output benchmarks/reports/v0.9-beta.json
-    python benchmarks/runner.py --tasks T01,T02 --output benchmarks/reports/quick.json
-    python benchmarks/runner.py --tasks T01 --output benchmarks/reports/t01.json --model qwen3:8b
+    # Ollama 使用時
+    python benchmarks/runner.py --version v0.9-beta --output benchmarks/reports/v0.9-beta.json --client ollama --model qwen3:8b
+
+    # llama-server 使用時
+    python benchmarks/runner.py --version v0.9-beta --output benchmarks/reports/v0.9-beta.json --client openai --base-url http://localhost:8080
+
+    # 特定タスクのみ
+    python benchmarks/runner.py --tasks T01,T02 --version v0.9-beta --output benchmarks/reports/quick.json --client ollama
 """
 import argparse
 import importlib.util
@@ -21,11 +26,21 @@ _TASK_TIMEOUT = 300  # 秒 (1 タスク最大 5 分)
 
 
 class BenchmarkRunner:
-    def __init__(self, version: str, tasks_dir: Path, fixtures_dir: Path, model: str | None = None):
+    def __init__(
+        self,
+        version: str,
+        tasks_dir: Path,
+        fixtures_dir: Path,
+        model: str | None = None,
+        client: str | None = None,
+        base_url: str | None = None,
+    ):
         self.version = version
         self.tasks_dir = tasks_dir
         self.fixtures_dir = fixtures_dir
         self.model = model
+        self.client = client
+        self.base_url = base_url
         self.results: dict = {}
 
     def run_task(self, task_id: str) -> dict:
@@ -92,6 +107,10 @@ class BenchmarkRunner:
         ]
         if self.model:
             cmd += ["--model", self.model]
+        if self.client:
+            cmd += ["--client", self.client]
+        if self.base_url:
+            cmd += ["--base-url", self.base_url]
 
         try:
             r = subprocess.run(
@@ -131,7 +150,7 @@ class BenchmarkRunner:
             print(f"\n[{task_id}]")
             self.results[task_id] = self.run_task(task_id)
             r = self.results[task_id]
-            status = "✓" if r.get("completed") else "✗"
+            status = "OK" if r.get("completed") else "NG"
             score = r.get("score", 0.0)
             duration = r.get("duration_sec", 0.0)
             print(f"  {status} score={score:.2f}  {duration:.0f}s")
@@ -164,6 +183,8 @@ def main() -> None:
     parser.add_argument("--tasks", default="all", help="カンマ区切りタスク ID、または 'all'")
     parser.add_argument("--output", required=True, help="レポート出力先 JSON パス")
     parser.add_argument("--model", default=None, help="使用モデルを上書き")
+    parser.add_argument("--client", default=None, choices=["ollama", "openai"], help="クライアント種別を上書き")
+    parser.add_argument("--base-url", default=None, dest="base_url", help="API ベース URL を上書き (openai 時)")
     args = parser.parse_args()
 
     tasks_dir = Path(__file__).parent / "tasks"
@@ -178,8 +199,15 @@ def main() -> None:
     print(f"Tasks: {', '.join(task_ids)}")
     if args.model:
         print(f"Model: {args.model}")
+    if args.client:
+        print(f"Client: {args.client}")
 
-    runner = BenchmarkRunner(args.version, tasks_dir, fixtures_dir, model=args.model)
+    runner = BenchmarkRunner(
+        args.version, tasks_dir, fixtures_dir,
+        model=args.model,
+        client=args.client,
+        base_url=getattr(args, "base_url", None),
+    )
     report = runner.run_all(task_ids)
 
     output_path = Path(args.output)

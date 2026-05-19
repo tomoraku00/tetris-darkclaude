@@ -26,7 +26,7 @@ def compare(baseline_path: str, experiment_path: str) -> None:
         b_score = b.get("score", 0.0)
         e_score = e.get("score", 0.0)
         diff = e_score - b_score
-        arrow = "↑" if diff > 0.01 else ("↓" if diff < -0.01 else "·")
+        arrow = "^" if diff > 0.01 else ("v" if diff < -0.01 else "-")
         e_dur = e.get("duration_sec", 0.0)
         b_dur = b.get("duration_sec", 0.0)
         dur_info = f"{b_dur:.0f}→{e_dur:.0f}"

@@ -22,6 +22,8 @@ def run_oneshot(
     workdir: str | None,
     output_json: str | None,
     model_override: str | None,
+    client_override: str | None = None,
+    base_url_override: str | None = None,
 ) -> int:
     """非対話モード: プロンプト 1 回実行 → JSON 出力。ベンチマーク runner から呼ばれる。"""
     if workdir:
@@ -29,6 +31,10 @@ def run_oneshot(
 
     config = _load_config()
     model = model_override or config.get("model", "qwen3:8b")
+    if client_override:
+        config["client"] = client_override
+    if base_url_override:
+        config["base_url"] = base_url_override
     think_mode = "hide"  # 思考ブロックは非表示で高速化
 
     from clients import get_client
@@ -96,10 +102,16 @@ if __name__ == "__main__":
     parser.add_argument("--workdir", help="作業ディレクトリ (--prompt 時のみ)")
     parser.add_argument("--output-json", dest="output_json", help="結果を JSON で出力")
     parser.add_argument("--model", help="使用モデルを上書き")
+    parser.add_argument("--client", help="クライアント種別を上書き (ollama / openai)")
+    parser.add_argument("--base-url", dest="base_url", help="API ベース URL を上書き")
     args = parser.parse_args()
 
     if args.prompt:
-        sys.exit(run_oneshot(args.prompt, args.workdir, args.output_json, args.model))
+        sys.exit(run_oneshot(
+            args.prompt, args.workdir, args.output_json, args.model,
+            client_override=args.client,
+            base_url_override=args.base_url,
+        ))
     else:
         from tui import run
         run()

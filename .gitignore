@@ -23,5 +23,6 @@ scripts/*.py
 # v0.8 訓練キャッシュ
 training/unsloth_compiled_cache/
 
-# ベンチマークレポート (バージョン比較用のベースライン以外は除外)
+# ベンチマークレポート (一時実行結果は除外、ベースラインは git add -f で明示追加)
 benchmarks/reports/*.json
+!benchmarks/reports/v0.9-beta.json
