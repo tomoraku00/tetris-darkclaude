@@ -1,24 +1,13 @@
-# small_project
+# Project Conventions
 
-DarkClaude TUI アプリの縮小版。ファイル構造要約タスク (T01) 用。
+This is a small Python project modeled after a CLI coding assistant.
 
-## ファイル構成
+- `main.py`: entry point; calls `tui.run()`
+- `prompts.py`: system prompt string definitions
+- `clients/`: LLM client abstraction layer; contains one or more client implementations
+- `tools/`: tool implementations (read_file, write_file, bash, glob, str_replace)
+- `tui/`: TUI implementation; key files include app.py (main loop), chat.py (LLM turn), output.py (display buffer), banner.py (startup screen)
 
-- main.py: エントリポイント
-- prompts.py: システムプロンプト
-- clients/: LLM クライアント
-- tools/: ツール実装 (read_file, write_file, bash, glob, str_replace)
-- tui/: TUI 実装 (app.py, chat.py, output.py 等)
+The `tui/` directory contains the bulk of the logic. `clients/` and `tools/` each hold multiple Python files.
 
-## 作業方針
-
-glob で全体像を把握してから read_file で主要ファイルを確認する。
-推測でファイルを読まない。
-
-## 例
-
-ユーザー: このプロジェクトのファイル構造を要約して
-応答:
-glob(**/*.py) → ファイル一覧確認
-read_file(main.py) → エントリポイント確認
-要約: main.py がエントリポイント。tui/ に TUI 実装、tools/ にツール群、clients/ に LLM クライアント。
+When describing structure, cover all four directories and explain each one's role.
