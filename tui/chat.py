@@ -10,7 +10,11 @@ from typing import Callable
 
 from tools.registry import TOOL_SCHEMAS, dispatch
 from session_log import SessionLog
-from prompts import SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT
+from prompts import (
+    SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT,
+    DARKCLAUDE_NATIVE_SYSTEM_PROMPT,
+    load_darkclaude_md_instructions, load_claude_md_instructions,
+)
 from .output import OutputBuffer
 from . import progress as prog
 
@@ -247,10 +251,32 @@ def _fmt_tool_result(result: str, is_error: bool = False) -> list[tuple[str, str
 
 # ---- システムプロンプト ----
 
-def build_system_prompt(plan_mode: bool, think_mode: str) -> str:
-    content = SYSTEM_PROMPT
-    if plan_mode:
-        content = PLAN_SYSTEM_PROMPT + "\n\n" + SYSTEM_PROMPT
+def build_system_prompt(
+    plan_mode: bool,
+    think_mode: str,
+    harness_mode: str = "claude_compat",
+    reflexion_max_chars: int = 4000,
+) -> str:
+    if harness_mode == "darkclaude_native":
+        darkclaude_md = load_darkclaude_md_instructions()
+        from tools.reflexion import load_reflexion
+        reflexion = load_reflexion()
+        if len(reflexion) > reflexion_max_chars:
+            reflexion = "...(古い記録は省略)...\n\n" + reflexion[-reflexion_max_chars:]
+        content = DARKCLAUDE_NATIVE_SYSTEM_PROMPT.format(
+            darkclaude_md_content=darkclaude_md or "(なし)",
+            reflexion_content=reflexion or "(なし)",
+        )
+        if plan_mode:
+            content = PLAN_SYSTEM_PROMPT + "\n\n" + content
+    else:
+        content = SYSTEM_PROMPT
+        if plan_mode:
+            content = PLAN_SYSTEM_PROMPT + "\n\n" + content
+        claude_md = load_claude_md_instructions()
+        if claude_md:
+            content += f"\n\n## Project-specific instructions\n\n{claude_md}"
+
     if think_mode == "off":
         content += "\n\n/no_think"
     return content
@@ -296,6 +322,11 @@ def chat_turn(
     allowed_bash_commands: set | None = None,
     session_log: SessionLog | None = None,
     approval_fn: Callable | None = None,
+    harness_mode: str = "claude_compat",
+    auto_compact: bool = False,
+    compact_threshold: float = 0.7,
+    compact_recent_turns: int = 5,
+    reflexion_max_chars: int = 4000,
 ) -> None:
     """1 ターン分の処理（ユーザー入力 → ツールループ → アシスタント応答）。"""
 
@@ -322,8 +353,26 @@ def chat_turn(
     prog.working()
     try:
         while True:
+            # Auto-Compaction (E7 統合): 閾値超えなら LLM 要約で履歴を圧縮
+            if auto_compact:
+                from tools.compaction import should_compact, compact_history, save_compaction_log
+                if should_compact(messages, compact_threshold):
+                    _orig = list(messages)
+                    _compacted = compact_history(messages, client, model, compact_recent_turns)
+                    messages[:] = _compacted
+                    try:
+                        save_compaction_log(_orig, _compacted)
+                    except Exception:
+                        pass
+                    output.append_fragments([
+                        ("class:muted",
+                         f"  [auto-compaction] {len(_orig)} → {len(_compacted)} messages\n"),
+                    ])
+
             send_messages = (
-                [{"role": "system", "content": build_system_prompt(plan_mode, think_mode)}]
+                [{"role": "system", "content": build_system_prompt(
+                    plan_mode, think_mode, harness_mode, reflexion_max_chars
+                )}]
                 + messages
             )
             llm_start = time.monotonic()
