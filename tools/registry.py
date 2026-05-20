@@ -1,21 +1,89 @@
-from tools import bash, glob, grep, read_file, str_replace, write_file
+from tools import bash, glob, read_file, str_replace, write_file
+# grep は E16 で削除 (使用頻度 0、description 肥大化の要因)
 
 _TOOLS = {
     "read_file":   read_file.run,
     "write_file":  write_file.run,
     "bash":        bash.run,
-    "grep":        grep.run,
     "glob":        glob.run,
     "str_replace": str_replace.run,
 }
 
+# E16: description を Qwen3.6 向けに短縮
 TOOL_SCHEMAS = [
-    read_file.SCHEMA,
-    write_file.SCHEMA,
-    bash.SCHEMA,
-    grep.SCHEMA,
-    glob.SCHEMA,
-    str_replace.SCHEMA,
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "ファイルを読み込む。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "ファイルパス"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "str_replace",
+            "description": "ファイルの文字列を置換する。old_str が一意に存在する必要がある。既存ファイル編集に使う（推奨）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old_str": {"type": "string", "description": "置換対象（一意な文字列）"},
+                    "new_str": {"type": "string", "description": "置換後"},
+                },
+                "required": ["path", "old_str", "new_str"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "新規ファイルを作成する。既存ファイル編集には str_replace を使うこと。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "glob",
+            "description": "ファイルを検索する (例: '**/*.py', 'src/**/*.ts')。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string"},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bash",
+            "description": "シェルコマンドを実行する (Windows PowerShell)。`&&` は不可、`;` を使う。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string"},
+                },
+                "required": ["command"],
+            },
+        },
+    },
 ]
 
 _PLAN_BLOCKED = {"write_file", "bash"}
