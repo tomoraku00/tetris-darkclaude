@@ -1,16 +1,8 @@
-# multi_refactor
+# Project Conventions
 
-プロセッサパイプラインのリファクタリングタスク (T06) 用。
+This project implements a multi-format processor pipeline.
 
-## ファイル構成
+- `pipeline.py`: pipeline entry point; manages processor registration via `_REGISTRY` and dispatches input to the appropriate processor by format
+- `processors/`: one processor module per format — `text_processor.py`, `csv_processor.py`, `json_processor.py`, `xml_processor.py`, `binary_processor.py`
 
-- pipeline.py: パイプラインエントリポイント (_REGISTRY でプロセッサを管理)
-- processors/: 各フォーマットのプロセッサ
-  - text_processor.py, csv_processor.py, json_processor.py
-  - xml_processor.py, binary_processor.py
-
-## 作業方針
-
-glob で全プロセッサを確認 → read_file で共通パターンを把握 →
-共通基底クラスへの切り出しや重複排除などのリファクタリングを実施。
-変更後は既存の動作が壊れていないことを確認する。
+Each processor follows a similar structure. Use `glob` to survey all files before reading individual processors.
