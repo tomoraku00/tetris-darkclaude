@@ -65,6 +65,24 @@ def render_banner(config: dict) -> FormattedText:
         ("class:muted", " server     "), ("class:info.value", base_url), ("", "\n"),
         ("class:muted", " cwd        "), ("class:output", cwd), ("", "\n"),
         ("class:muted", " phase      "), ("class:phase", phase), ("", "\n"),
+    ]
+
+    # Harness ステータス
+    harness_mode = config.get("harness_mode", "claude_compat")
+    harness_label = "darkclaude-native" if harness_mode == "darkclaude_native" else "claude-compat"
+    parts += [
+        ("class:muted", " harness    "), ("class:phase", harness_label), ("", "\n"),
+    ]
+    if harness_mode == "darkclaude_native":
+        auto_compact = config.get("auto_compaction", False)
+        components = "DARKCLAUDE.md + Reflexion"
+        if auto_compact:
+            components += " + Auto-Compact"
+        parts += [
+            ("class:muted", "            "), ("class:info.value", components), ("", "\n"),
+        ]
+
+    parts += [
         ("", "\n"),
         ("class:muted", " Type /help for commands.  Ctrl+C to exit."), ("", "\n"),
         ("", "\n"),
