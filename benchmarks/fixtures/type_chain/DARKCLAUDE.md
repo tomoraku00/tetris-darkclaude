@@ -1,28 +1,8 @@
-# type_chain
+# Project Conventions
 
-mypy 型エラー修正タスク (T13) 用。
+This project contains a geometry module and its test suite.
 
-## ファイル構成
+- `shapes.py`: `Shape` class hierarchy with concrete subclasses; includes factory functions and a search function; currently has type annotation errors under `mypy --strict`
+- `test_shapes.py`: 8 pytest tests covering shape creation, area calculation, and the factory/search functions
 
-- shapes.py: Shape クラス群 (mypy --strict で 30+ エラー)
-- test_shapes.py: pytest テスト (8 件)
-
-## 要件
-
-- mypy --strict shapes.py で 0 エラー
-- pytest test_shapes.py で全テスト通過
-- Any 型は使わない
-
-## 作業方針
-
-read_file(shapes.py) → 現状確認
-bash(python -m mypy --strict shapes.py) → エラー一覧確認
-str_replace でエラーを修正 (ABC 継承、Optional[Shape]、float 注釈など)
-bash(python -m pytest test_shapes.py) → テスト確認。
-
-## ヒント
-
-- Shape: ABC を継承、area() の戻り値は float
-- find_largest の戻り値: Optional[Shape]
-- make_shape の戻り値: Optional[Shape]
-- *args は float 前提で型注釈
+The goal is to make `mypy --strict shapes.py` pass with 0 errors while keeping all 8 tests green. Running mypy first gives a full list of what needs fixing.
