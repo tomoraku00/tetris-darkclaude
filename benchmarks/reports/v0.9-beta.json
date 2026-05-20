@@ -1,0 +1,21 @@
+{
+  "version": "v0.9-beta",
+  "timestamp": "2026-05-19T11:08:43.776590+00:00",
+  "model": "default",
+  "tasks": {
+    "T01_summarize_structure": {
+      "completed": false,
+      "score": 0.0,
+      "duration_sec": 5.3,
+      "tool_calls": 0,
+      "output": " ▸ このプロジェクトのファイル構造を 100 字以内で要約してください。主要なディレクトリと、その役割を述べてください。                  \n\n✻ Cogitating...\n\nERROR: HTTP request failed: ConnectionError: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=8080): Failed to establish a new connection: [WinError 10061] 対象のコンピューターによって拒否されたため、接続できませんでした。\"))\n\n  (合計 4.1s)\n\n"
+    }
+  },
+  "totals": {
+    "completed": 0,
+    "total": 1,
+    "failed": 1,
+    "total_duration_sec": 5.3,
+    "avg_score": 0.0
+  }
+}
