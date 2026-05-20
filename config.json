@@ -3,5 +3,10 @@
   "client": "openai",
   "base_url": "http://localhost:8080",
   "think_mode": "off",
-  "logging_enabled": true
+  "logging_enabled": true,
+  "harness_mode": "darkclaude_native",
+  "auto_compaction": true,
+  "compaction_threshold": 0.7,
+  "compaction_recent_turns": 5,
+  "reflexion_max_chars": 4000
 }
