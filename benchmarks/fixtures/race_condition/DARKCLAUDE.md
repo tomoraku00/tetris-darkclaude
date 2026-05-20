@@ -1,25 +1,9 @@
-# race_condition
+# Project Conventions
 
-非同期 race condition 修正タスク (T12) 用。
+This project contains an async counter and a concurrent test suite.
 
-## ファイル構成
+- `counter.py`: `AsyncCounter` class with an `increment()` coroutine and a `value` property; designed for use with `asyncio`
+- `test_counter.py`: pytest-asyncio tests that run multiple coroutines concurrently to verify correctness under load; the test suite runs 20 iterations
+- `README.md`: describes the observed bug and the expected correct behavior
 
-- counter.py: AsyncCounter クラス (race condition あり)
-- test_counter.py: テスト (20 回連続実行で全通過が条件)
-- README.md: バグの詳細・修正方法
-
-## バグの概要
-
-increment 内で `read → await sleep → write` の間に他のコルーチンが割り込み、
-同じ current 値を複数のコルーチンが読んでしまう。
-
-## 修正方法
-
-`__init__` に `self._lock = asyncio.Lock()` を追加し、
-increment 内を `async with self._lock:` で囲む。
-
-## 作業方針
-
-read_file(counter.py) → 問題箇所確認
-str_replace で asyncio.Lock を追加
-bash(python -m pytest test_counter.py -v) → 通過確認 (20 回連続テスト)。
+Run the tests first to observe the failure, then read the source and README to understand the root cause.
