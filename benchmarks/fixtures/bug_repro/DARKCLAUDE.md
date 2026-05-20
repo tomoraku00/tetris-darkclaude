@@ -1,21 +1,8 @@
-# bug_repro
+# Project Conventions
 
-バグ再現・修正タスク (T10) 用。
+This project contains a list utility and documentation describing a known bug.
 
-## ファイル構成
+- `list_utils.py`: contains `flatten_nested(lst, depth)` for flattening nested lists up to a given depth
+- `README.md`: describes the bug, expected vs. actual behavior, and reproduction steps
 
-- list_utils.py: flatten_nested 関数 (depth 引数バグあり)
-- README.md: バグの詳細・再現手順・期待動作
-
-## バグの概要
-
-flatten_nested の depth 引数が内部再帰呼び出しに渡されていないため、
-depth 指定が無視されて完全フラット化される。
-
-## 作業方針
-
-read_file(README.md) → バグ仕様確認
-read_file(list_utils.py) → 原因特定
-write_file(test_list_utils.py) → テスト作成 (depth=0/1/2/-1 のケース)
-str_replace(list_utils.py) → depth を再帰呼び出しに渡すよう修正
-bash(python -m pytest test_list_utils.py) → 全通過確認。
+`README.md` is the primary spec for this task. Read it first to understand the intended contract before inspecting the code.
