@@ -103,6 +103,11 @@ def run() -> None:
     model: str = config.get("model", DEFAULT_MODEL)
     think_mode: str = config.get("think_mode", DEFAULT_THINK_MODE)
     logging_enabled: bool = config.get("logging_enabled", DEFAULT_LOGGING_ENABLED)
+    harness_mode: str = config.get("harness_mode", "claude_compat")
+    auto_compact: bool = config.get("auto_compaction", False)
+    compact_threshold: float = float(config.get("compaction_threshold", 0.7))
+    compact_recent_turns: int = int(config.get("compaction_recent_turns", 5))
+    reflexion_max_chars: int = int(config.get("reflexion_max_chars", 4000))
 
     if think_mode not in THINK_MODES:
         think_mode = DEFAULT_THINK_MODE
@@ -145,7 +150,7 @@ def run() -> None:
         model=model,
         plan_mode=state["plan_mode"],
         think_mode=think_mode,
-        system_prompt=build_system_prompt(state["plan_mode"], think_mode),
+        system_prompt=build_system_prompt(state["plan_mode"], think_mode, harness_mode, reflexion_max_chars),
     )
     session_log.session_start()
 
@@ -351,6 +356,11 @@ def run() -> None:
                 allowed_bash_commands=allowed_bash_commands,
                 session_log=session_log,
                 approval_fn=approval_fn,
+                harness_mode=harness_mode,
+                auto_compact=auto_compact,
+                compact_threshold=compact_threshold,
+                compact_recent_turns=compact_recent_turns,
+                reflexion_max_chars=reflexion_max_chars,
             )
         except Exception as e:
             output.append(f"\n[ERROR] {type(e).__name__}: {e}\n\n")
