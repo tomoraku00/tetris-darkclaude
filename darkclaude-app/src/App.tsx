@@ -36,7 +36,7 @@ function MsgLine({msg}:{msg:Msg}) {
     </div>
   )
   switch(msg.type){
-    case "user": return <div className="msg-user"><span className="prompt-mark">▸ </span><span className="user-text">{msg.text}</span></div>
+    case "user": return <div className="msg-user"><span className="prompt-mark">{">"}  </span><span className="user-text">{msg.text}</span></div>
     case "thinking": return <div className="msg-thinking">✻ {msg.text}</div>
     case "tool_call": return <div className="msg-tool-call">⏺ {msg.name}({msg.text})</div>
     case "tool_result": return <div className={msg.isError?"msg-tool-err":"msg-tool-ok"}>  ⎿ {msg.text}{msg.elapsed!==undefined&&<span className="msg-elapsed">  ({msg.elapsed.toFixed(1)}s)</span>}</div>
@@ -204,7 +204,7 @@ export default function App() {
         <div className="input-wrap">
           <div className="sep-line"/>
           <div className="input-row">
-            <span className="prompt-mark">▸ </span>
+            <span className="prompt-mark">{">"}  </span>
             <input ref={inputRef} className="chat-input" value={input}
               onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}
