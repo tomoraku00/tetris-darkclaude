@@ -1,116 +1,91 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
+/* DarkClaude Tauri v0.9-beta - style.py 準拠 */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0a;
+  --banner:#2a2a2a;
+  --muted:#6a6a6a;
+  --sep:#3a3a3a;
+  --output:#e0e0e0;
+  --code-bg:#1a1a1a;
+  --user-bg:#1a1a1a;
+  --prompt:#ffffff;
+  --user-text:#7a7a7a;
+  --tool-call:#5a8a98;
+  --tool-ok:#5a8a98;
+  --tool-err:#a85050;
+  --thinking:#b095d5;
+  --info-val:#5a8a98;
+  --info-ver:#b095d5;
+  --info-phase:#b095d5;
+  --section-h:#b095d5;
+  --st-val:#5a8a98;
+  --st-mode:#b095d5;
+  --diff-add-bg:#0a3a3f;
+  --diff-rm-bg:#3a1010;
 }
+html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Code','Cascadia Mono','Consolas','Courier New',monospace;font-size:13px;height:100%;overflow:hidden}
+#root{height:100vh;overflow:hidden}
+.app{display:flex;flex-direction:column;height:100vh;background:var(--bg);overflow:hidden}
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+/* Banner - flexbox で横並び、文字幅計算に依存しない */
+.banner-wrap{display:flex;flex-direction:row;align-items:flex-start;flex-shrink:0;padding:0;gap:0}
+.banner-text{color:var(--banner);font-weight:bold;white-space:pre;line-height:1.2;user-select:none;padding:0;margin:0;font-family:'Consolas','Courier New',monospace;font-feature-settings:'halt' 0;text-rendering:geometricPrecision}
+.banner-mascot{color:var(--banner);font-weight:bold;white-space:pre;line-height:1.2;user-select:none;padding:0 0 0 8px;margin:0;font-family:'Consolas','Courier New',monospace;font-feature-settings:'halt' 0;text-rendering:geometricPrecision}
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+/* Chat log */
+.chat-log{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 6px;scrollbar-width:thin;scrollbar-color:#3a3a3a #0a0a0a}
+.chat-log::-webkit-scrollbar{width:5px}
+.chat-log::-webkit-scrollbar-track{background:var(--bg)}
+.chat-log::-webkit-scrollbar-thumb{background:var(--sep);border-radius:2px}
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
+/* Messages */
+.msg-user{background:var(--user-bg);padding:0 2px;display:block;width:100%}
+.msg-user .prompt-mark{color:var(--prompt);font-weight:bold}
+.msg-user .user-text{color:var(--user-text)}
+.msg-assistant{color:var(--output);white-space:pre-wrap;word-break:break-word}
+.msg-thinking{color:var(--thinking)}
+.msg-tool-call{color:var(--tool-call)}
+.msg-tool-ok{color:var(--tool-ok)}
+.msg-tool-err{color:var(--tool-err)}
+.msg-elapsed{color:var(--muted)}
+.msg-error{color:var(--tool-err)}
+.msg-info{color:var(--muted);white-space:pre;display:flex}
+.msg-info-plain{color:var(--muted);white-space:pre}
+.msg-separator{color:var(--sep);white-space:pre;user-select:none}
+.msg-code{background:var(--code-bg);color:var(--output);white-space:pre;font-family:inherit;padding:0 4px}
+.msg-diff-add{background:var(--diff-add-bg);color:#ffffff;white-space:pre}
+.msg-diff-rm{background:var(--diff-rm-bg);color:#ffffff;white-space:pre}
+.msg-diff-ctx{color:var(--output);white-space:pre}
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
+/* Info key-value */
+.info-label{color:var(--muted);white-space:pre;min-width:12ch}
+.info-val{color:var(--info-val)}
+.info-ver{color:var(--info-ver)}
+.info-phase{color:var(--info-phase)}
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
+/* Input area */
+.input-wrap{flex-shrink:0;background:var(--bg)}
+.sep-line{height:1px;background:var(--sep)}
+.input-row{display:flex;align-items:center;padding:2px 4px;background:var(--bg)}
+.input-row .prompt-mark{color:var(--prompt);font-weight:bold;flex-shrink:0;user-select:none}
+.chat-input{flex:1;background:transparent;border:none;outline:none;color:var(--output);font-family:inherit;font-size:inherit;caret-color:var(--prompt)}
+.chat-input:disabled{opacity:0.5}
 
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
+/* Status bar */
+.status-bar{display:flex;align-items:center;background:var(--bg);padding:1px 4px;flex-shrink:0;font-size:12px;border-top:1px solid var(--sep)}
+.st-val{color:var(--st-val)}
+.st-muted{color:var(--muted)}
+.st-mode{color:var(--st-mode)}
+.st-think{color:var(--thinking)}
 
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
+/* Approval */
+.approval-wrap{background:var(--bg);padding:0 6px;flex-shrink:0}
+.approval-sep-top{height:1px;background:var(--section-h);margin:2px 0}
+.approval-sep-bot{height:1px;background:var(--sep);margin:2px 0}
+.approval-title{color:var(--section-h);font-weight:bold;padding:2px 0}
+.approval-cmd{background:var(--code-bg);color:var(--output);padding:2px 4px;white-space:pre-wrap}
+.approval-q{color:var(--output);padding:2px 0}
+.appr-opt{color:#7a7a7a;cursor:pointer;padding:1px 0}
+.appr-opt:hover{color:var(--output)}
+.appr-sel{color:#ffffff;font-weight:bold;cursor:pointer;padding:1px 0}
+.approval-hint{color:#5a5a5a;font-size:11px;padding:2px 0}
