@@ -24,6 +24,11 @@ class OpenAIClient:
         }
         if tools:
             body["tools"] = tools
+        # Qwen3.6 公式推奨サンプリングパラメータ
+        body["temperature"] = 1.0
+        body["top_p"] = 0.95
+        body["top_k"] = 20
+        body["presence_penalty"] = 1.5
 
         try:
             r = requests.post(

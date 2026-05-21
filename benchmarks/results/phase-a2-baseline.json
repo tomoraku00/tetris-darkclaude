@@ -1,0 +1,23 @@
+{
+  "version": "b9209-baseline",
+  "timestamp": "2026-05-21T09:09:40.863713+00:00",
+  "model": "default",
+  "tasks": {
+    "T01_summarize_structure": {
+      "completed": true,
+      "score": 1.0,
+      "speed_score": 0.8,
+      "duration_sec": 55.1,
+      "tool_calls": 5,
+      "output": " ▸ このプロジェクトのファイル構造を 100 字以内で要約してください。主要なディレクトリと、その役割を述べてください。                  \n\n✻ 考え中...\n⏺ bash(Get-ChildItem -Recurse -Directory | Select-Obje...)\n  ⎿ FullName                                                  --------                                  ...\n  (0.3s)\n✻ Thinking...\n⏺ bash(Get-ChildItem -Recurse -File | Select-Object Fu...)\n  ⎿ FullName                                                              --------                      ...\n  (0.3s)\n✻ 解析中...\n⏺ read_file(C:\\Users\\tomo_rrow\\AppD"
+    }
+  },
+  "totals": {
+    "completed": 1,
+    "total": 1,
+    "failed": 0,
+    "total_duration_sec": 55.1,
+    "avg_score": 1.0,
+    "avg_speed_score": 0.8
+  }
+}

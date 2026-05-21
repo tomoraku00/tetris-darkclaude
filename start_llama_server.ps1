@@ -1,6 +1,6 @@
 # start_llama_server.ps1 - DarkClaude 用 llama-server 起動スクリプト (Phase 2b - context 16K)
 $ErrorActionPreference = "Stop"
-$llamaDir = "$env:USERPROFILE\llamacpp\llama-b9209-bin-win-cuda-12.4-x64"
+$llamaDir = "$env:USERPROFILE\llamacpp\llama-b9264-bin-win-cuda-12.4-x64"
 $modelPath = "$env:USERPROFILE\models\Qwen3.6-35B-A3B-UD-Q3_K_XL.gguf"
 if (-not (Test-Path $llamaDir)) {
     Write-Error "llama.cpp directory not found: $llamaDir"
@@ -14,20 +14,20 @@ Write-Host ""
 Write-Host "Starting llama-server for DarkClaude (Phase 2)..." -ForegroundColor Cyan
 Write-Host "  Model:    $modelPath"
 Write-Host "  Port:     8080"
-Write-Host "  Context:  16384"
+Write-Host "  Context:  8192"
 Write-Host "  Phase 1a: --cache-reuse, --kv-unified"
 Write-Host ""
 Push-Location $llamaDir
 try {
     .\llama-server.exe `
       -m $modelPath `
-      -c 16384 `
+      -c 8192 `
       -ngl 999 `
-      --n-cpu-moe 32 `
+      --n-cpu-moe 38 `
       -fa on `
       -t 16 `
       -b 2048 -ub 2048 `
-      -ctk q8_0 -ctv q8_0 `
+      -ctk q4_0 -ctv q4_0 `
       --port 8080 `
       --jinja `
       --reasoning off `

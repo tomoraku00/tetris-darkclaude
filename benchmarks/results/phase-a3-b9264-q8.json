@@ -1,0 +1,23 @@
+{
+  "version": "b9264-q8",
+  "timestamp": "2026-05-21T09:16:44.266577+00:00",
+  "model": "default",
+  "tasks": {
+    "T01_summarize_structure": {
+      "completed": true,
+      "score": 1.0,
+      "speed_score": 0.8,
+      "duration_sec": 46.9,
+      "tool_calls": 3,
+      "output": " ▸ このプロジェクトのファイル構造を 100 字以内で要約してください。主要なディレクトリと、その役割を述べてください。                  \n\n✻ Cogitating...\n⏺ glob(*)\n  ⎿ clients\\__init__.py DARKCLAUDE.md main.py prompts.py tools\\__init__.py tui\\__init__.py\n  (0.0s)\n✻ 分析中...\n⏺ str_replace(DARKCLAUDE.md)\n  ⎿ ERROR: old_str not found in DARKCLAUDE.md\n  (0.0s)\n✻ Crunching...\n⏺ read_file(DARKCLAUDE.md)\n  ⎿ # Project Conventions  This is a small Python project modeled after a CLI coding assistant.  - `main...\n  (0.0s)\n✻ 分析中...\n\nこのプロジェクトはCLIコーディングアシスタントです。`mai"
+    }
+  },
+  "totals": {
+    "completed": 1,
+    "total": 1,
+    "failed": 0,
+    "total_duration_sec": 46.9,
+    "avg_score": 1.0,
+    "avg_speed_score": 0.8
+  }
+}

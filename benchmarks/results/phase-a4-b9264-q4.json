@@ -1,0 +1,23 @@
+{
+  "version": "b9264-q4",
+  "timestamp": "2026-05-21T09:18:30.856796+00:00",
+  "model": "default",
+  "tasks": {
+    "T01_summarize_structure": {
+      "completed": true,
+      "score": 1.0,
+      "speed_score": 1.0,
+      "duration_sec": 14.9,
+      "tool_calls": 2,
+      "output": " ▸ このプロジェクトのファイル構造を 100 字以内で要約してください。主要なディレクトリと、その役割を述べてください。                  \n\n✻ Cogitating...\n⏺ glob(**/*)\n  ⎿ clients\\__init__.py DARKCLAUDE.md main.py prompts.py tools\\__init__.py tui\\__init__.py\n  (0.0s)\n✻ Brewing...\n⏺ bash(Get-ChildItem -Recurse -File | Select-Object Fu...)\n  ⎿ FullName                                                              --------                      ...\n  (0.3s)\n✻ 思考中...\n\n以下が要約です。\n\nこのプロジェクトは、クライアント（API通信）、ツール（機能拡張）、TUI（ターミナルUI）の3モジュールと、エントリポイントのmain.py、プロンプト定義のp"
+    }
+  },
+  "totals": {
+    "completed": 1,
+    "total": 1,
+    "failed": 0,
+    "total_duration_sec": 14.9,
+    "avg_score": 1.0,
+    "avg_speed_score": 1.0
+  }
+}

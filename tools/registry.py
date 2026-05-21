@@ -1,15 +1,18 @@
+﻿# -*- coding: utf-8 -*-
+import os
 from tools import bash, glob, read_file, str_replace, write_file
+
 # grep は E16 で削除 (使用頻度 0、description 肥大化の要因)
+_CODEGRAPH_AVAILABLE = os.path.exists(".codegraph/codegraph.db")
 
 _TOOLS = {
-    "read_file":   read_file.run,
-    "write_file":  write_file.run,
-    "bash":        bash.run,
-    "glob":        glob.run,
-    "str_replace": str_replace.run,
+    "read_file":         read_file.run,
+    "write_file":        write_file.run,
+    "bash":              bash.run,
+    "glob":              glob.run,
+    "str_replace":       str_replace.run,
 }
 
-# E16: description を Qwen3.6 向けに短縮
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -18,9 +21,7 @@ TOOL_SCHEMAS = [
             "description": "ファイルを読み込む。",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "ファイルパス"},
-                },
+                "properties": {"path": {"type": "string", "description": "ファイルパス"}},
                 "required": ["path"],
             },
         },
@@ -63,9 +64,7 @@ TOOL_SCHEMAS = [
             "description": "ファイルを検索する (例: '**/*.py', 'src/**/*.ts')。",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "pattern": {"type": "string"},
-                },
+                "properties": {"pattern": {"type": "string"}},
                 "required": ["pattern"],
             },
         },
@@ -74,20 +73,33 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "bash",
-            "description": "シェルコマンドを実行する (Windows PowerShell)。`&&` は不可、`;` を使う。",
+            "description": "シェルコマンドを実行する (Windows PowerShell)。&& は不可、; を使う。",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "command": {"type": "string"},
-                },
+                "properties": {"command": {"type": "string"}},
                 "required": ["command"],
             },
         },
     },
 ]
 
-_PLAN_BLOCKED = {"write_file", "bash"}
+if _CODEGRAPH_AVAILABLE:
+    from tools import codegraph_explore
+    _TOOLS["codegraph_explore"] = codegraph_explore.run
+    TOOL_SCHEMAS.append({
+        "type": "function",
+        "function": {
+            "name": "codegraph_explore",
+            "description": "コードベースのシンボル・関数・クラス・依存関係を検索する。grep/glob/read_file より高速で効率的。",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "検索クエリ (例: 'dispatch tool_call', 'chat_turn loop')"}},
+                "required": ["query"],
+            },
+        },
+    })
 
+_PLAN_BLOCKED = {"write_file", "bash"}
 
 def dispatch(name: str, args: dict, plan_mode: bool = False) -> str:
     if plan_mode and name in _PLAN_BLOCKED:
