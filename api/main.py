@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""DarkClaude FastAPI バックエンド"""
-import sys, json, asyncio
+"""DarkClaude FastAPI backend - Skills / Resumable / Approval"""
+import sys, json, asyncio, uuid, sqlite3
 from pathlib import Path
+from datetime import datetime
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI
@@ -10,15 +12,22 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="DarkClaude API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+_DB_PATH = Path(__file__).parent.parent / ".darkclaude" / "sessions.db"
+_SKILLS_DIR = Path(__file__).parent.parent / ".darkclaude" / "skills"
+
+APPROVAL_TOOLS = {"write_file", "bash", "str_replace"}
+
+_config = {}
+_messages = []
+_client = None
+_current_session_id = None
+_pending_approvals = {}
+_approval_decisions = {}
+_always_allow = set()
+
 
 def _load_config():
     try:
@@ -26,29 +35,128 @@ def _load_config():
     except Exception:
         return {}
 
-# グローバル状態
-_config = _load_config()
-_messages = []
-_client = None
 
 def get_client():
     global _client
     if _client is None:
-        from clients import get_client as _get_client
-        _client = _get_client(_config)
+        from clients import get_client as _gc
+        _client = _gc(_config)
     return _client
 
-def reset_messages():
-    global _messages
+
+# ---- SQLite sessions ----
+
+def init_db():
+    _DB_PATH.parent.mkdir(exist_ok=True)
+    con = sqlite3.connect(_DB_PATH)
+    con.execute("""CREATE TABLE IF NOT EXISTS sessions
+        (id TEXT PRIMARY KEY, created_at TEXT, updated_at TEXT)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS messages
+        (id INTEGER PRIMARY KEY AUTOINCREMENT,
+         session_id TEXT, role TEXT, content TEXT,
+         tool_calls TEXT, name TEXT, created_at TEXT)""")
+    con.commit(); con.close()
+
+
+def _new_session():
+    sid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    con = sqlite3.connect(_DB_PATH)
+    con.execute("INSERT INTO sessions VALUES (?,?,?)", (sid, now, now))
+    con.commit(); con.close()
+    return sid
+
+
+def _save_msg(session_id, msg):
+    con = sqlite3.connect(_DB_PATH)
+    con.execute(
+        "INSERT INTO messages(session_id,role,content,tool_calls,name,created_at) VALUES(?,?,?,?,?,?)",
+        (session_id, msg.get("role",""), msg.get("content") or "",
+         json.dumps(msg["tool_calls"]) if msg.get("tool_calls") else None,
+         msg.get("name"), datetime.utcnow().isoformat()))
+    con.execute("UPDATE sessions SET updated_at=? WHERE id=?",
+                (datetime.utcnow().isoformat(), session_id))
+    con.commit(); con.close()
+
+
+def _load_latest():
+    con = sqlite3.connect(_DB_PATH)
+    row = con.execute("SELECT id FROM sessions ORDER BY updated_at DESC LIMIT 1").fetchone()
+    if not row:
+        con.close(); return None, []
+    sid = row[0]
+    rows = con.execute(
+        "SELECT role,content,tool_calls,name FROM messages WHERE session_id=? ORDER BY id",
+        (sid,)).fetchall()
+    con.close()
+    msgs = []
+    for role, content, tc_json, name in rows:
+        m = {"role": role, "content": content}
+        if tc_json: m["tool_calls"] = json.loads(tc_json)
+        if name: m["name"] = name
+        msgs.append(m)
+    return sid, msgs
+
+
+# ---- Skills ----
+
+def _skills_context(user_message):
+    try:
+        from tools.skills import load_skills, select_relevant_skills, build_skill_context
+        skills = load_skills(_SKILLS_DIR)
+        relevant = select_relevant_skills(skills, user_message)
+        return build_skill_context(relevant)
+    except Exception:
+        return ""
+
+
+# ---- System prompt ----
+
+def _get_system_prompt(skills_ctx=""):
     from prompts import SYSTEM_PROMPT
-    _messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if skills_ctx:
+        return SYSTEM_PROMPT + "\n\n# 関連スキル\n" + skills_ctx
+    return SYSTEM_PROMPT
 
-reset_messages()
 
+def reset_messages(new_session=True):
+    global _messages, _current_session_id
+    if new_session:
+        _current_session_id = _new_session()
+    sys_msg = {"role": "system", "content": _get_system_prompt()}
+    _messages = [sys_msg]
+    _save_msg(_current_session_id, sys_msg)
+
+
+# ---- Startup ----
+
+@app.on_event("startup")
+async def startup():
+    global _config, _messages, _current_session_id
+    _config.update(_load_config())
+    init_db()
+    from prompts import SYSTEM_PROMPT
+    sid, msgs = _load_latest()
+    if sid and msgs:
+        _current_session_id = sid
+        _messages = msgs
+        if not _messages or _messages[0].get("role") != "system":
+            _messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+    else:
+        reset_messages()
+
+
+# ---- Models ----
 
 class ChatRequest(BaseModel):
     message: str
 
+class ApproveRequest(BaseModel):
+    id: str
+    decision: str  # allow | allow_always | deny
+
+
+# ---- Endpoints ----
 
 @app.get("/health")
 def health():
@@ -59,24 +167,39 @@ def health():
 def status():
     try:
         import subprocess
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.used,memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=3
-        )
-        if result.returncode == 0:
-            parts = result.stdout.strip().split(", ")
-            vram_used = int(parts[0])
-            vram_free = int(parts[1])
-        else:
-            vram_used, vram_free = 0, 0
+        r = subprocess.run(
+            ["nvidia-smi","--query-gpu=memory.used,memory.free","--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=3)
+        parts = r.stdout.strip().split(", ")
+        vu, vf = int(parts[0]), int(parts[1])
     except Exception:
-        vram_used, vram_free = 0, 0
-    return {
-        "model": _config.get("model", "unknown"),
-        "base_url": _config.get("base_url", "http://localhost:8080"),
-        "vram_used": vram_used,
-        "vram_free": vram_free,
-    }
+        vu, vf = 0, 0
+    return {"model": _config.get("model","unknown"),
+            "base_url": _config.get("base_url","http://localhost:8080"),
+            "vram_used": vu, "vram_free": vf,
+            "session_id": _current_session_id}
+
+
+@app.post("/approve")
+async def approve(req: ApproveRequest):
+    if req.decision == "allow_always":
+        # tool name を approval ID から取得するために decisions に保存
+        pass
+    if req.id in _pending_approvals:
+        _approval_decisions[req.id] = req.decision
+        _pending_approvals[req.id].set()
+    return {"status": "ok"}
+
+
+@app.get("/sessions")
+def list_sessions():
+    con = sqlite3.connect(_DB_PATH)
+    rows = con.execute(
+        "SELECT id,created_at,updated_at FROM sessions ORDER BY updated_at DESC LIMIT 20"
+    ).fetchall()
+    con.close()
+    return {"sessions": [{"id":r[0],"created_at":r[1],"updated_at":r[2]} for r in rows],
+            "current": _current_session_id}
 
 
 @app.post("/chat")
@@ -85,30 +208,77 @@ async def chat(req: ChatRequest):
 
     async def generate():
         global _messages
-        _messages.append({"role": "user", "content": req.message})
+
+        # Skills injection
+        skills_ctx = _skills_context(req.message)
+        if skills_ctx and _messages and _messages[0]["role"] == "system":
+            _messages[0] = {"role":"system","content": _get_system_prompt(skills_ctx)}
+
+        user_msg = {"role": "user", "content": req.message}
+        _messages.append(user_msg)
+        _save_msg(_current_session_id, user_msg)
+
         client = get_client()
         model = _config.get("model", "default")
 
         while True:
-            response = await asyncio.to_thread(
-                client.chat, model, _messages, TOOL_SCHEMAS
-            )
+            response = await asyncio.to_thread(client.chat, model, _messages, TOOL_SCHEMAS)
             msg = response.get("message", {})
             _messages.append(msg)
-            tool_calls = msg.get("tool_calls") or []
+            _save_msg(_current_session_id, msg)
 
+            tool_calls = msg.get("tool_calls") or []
             if not tool_calls:
-                content = msg.get("content", "")
-                yield f"data: {json.dumps({'type': 'text', 'content': content})}\n\n"
+                yield f"data: {json.dumps({'type':'text','content':msg.get('content','')})}\n\n"
                 break
 
             for tc in tool_calls:
-                name = tc.get("function", {}).get("name", "")
-                args = tc.get("function", {}).get("arguments", {})
-                yield f"data: {json.dumps({'type': 'tool_call', 'name': name, 'args': args})}\n\n"
+                name = tc.get("function",{}).get("name","")
+                args = tc.get("function",{}).get("arguments",{})
+                yield f"data: {json.dumps({'type':'tool_call','name':name,'args':args})}\n\n"
+
+                # 承認チェック
+                if name in APPROVAL_TOOLS and name not in _always_allow:
+                    aid = str(uuid.uuid4())
+                    ev = asyncio.Event()
+                    _pending_approvals[aid] = ev
+                    args_str = json.dumps(args, ensure_ascii=False, indent=2) if isinstance(args, dict) else str(args)
+                    approval_event = {
+                        'type': 'approval_needed',
+                        'id': aid,
+                        'title': f'\u23fa {name}(...)',
+                        'command': args_str,
+                        'emphasis': name,
+                        'name': name,
+                        'args': args,
+                    }
+                    yield f"data: {json.dumps(approval_event)}\n\n"
+                    try:
+                        await asyncio.wait_for(ev.wait(), timeout=120)
+                    except asyncio.TimeoutError:
+                        del _pending_approvals[aid]
+                        result = "USER_DENIED: timeout"
+                        tool_msg = {"role":"tool","content":result,"name":name}
+                        _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
+                        yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result})}\n\n"
+                        continue
+
+                    decision = _approval_decisions.pop(aid, "deny")
+                    del _pending_approvals[aid]
+
+                    if decision == "allow_always":
+                        _always_allow.add(name)
+                    elif decision == "deny":
+                        result = "USER_DENIED: ユーザーが操作を拒否しました"
+                        tool_msg = {"role":"tool","content":result,"name":name}
+                        _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
+                        yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result})}\n\n"
+                        continue
+
                 result = await asyncio.to_thread(dispatch, name, args)
-                _messages.append({"role": "tool", "content": result, "name": name})
-                yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'result': result[:500]})}\n\n"
+                tool_msg = {"role":"tool","content":result,"name":name}
+                _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
+                yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result[:500]})}\n\n"
 
         yield "data: [DONE]\n\n"
 
@@ -118,7 +288,7 @@ async def chat(req: ChatRequest):
 @app.post("/clear")
 def clear():
     reset_messages()
-    return {"status": "ok"}
+    return {"status": "ok", "session_id": _current_session_id}
 
 
 if __name__ == "__main__":
