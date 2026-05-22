@@ -141,10 +141,14 @@ export default function App() {
       addMsg(mk("info","Commands:"))
       addMsg(mk("info","  /exit /quit /bye  — 終了"))
       addMsg(mk("info","  /help             — このヘルプ"))
-      addMsg(mk("info","  /clear            — 画面クリア"))
+      addMsg(mk("info","  /clear            — 画面クリア"
+      addMsg(mk("info","  /plan             — 計画モード ON (ツール実行なし)"))
+      addMsg(mk("info","  /go               — 計画モード OFF (実行開始)"))))
       return
     }
     if(["/exit","/quit","/bye"].includes(text)){ window.close(); return }
+    if(text==="/plan"){ await fetch(`${API}/plan_mode`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:true})}); addMsg(mk("info","  Plan Mode ON - ツール実行なし、計画のみ出力 (/go で実行)")); return }
+    if(text==="/go"){ await fetch(`${API}/plan_mode`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:false})}); addMsg(mk("info","  Plan Mode OFF - 通常モードに戻りました")); return }
 
     addMsg(mk("user",text))
     const verb=THINKING_VERBS[Math.floor(Math.random()*THINKING_VERBS.length)]

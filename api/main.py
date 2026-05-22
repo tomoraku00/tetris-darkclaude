@@ -25,6 +25,7 @@ _config = {}
 _messages = []
 _client = None
 _current_session_id = None
+plan_mode = False
 _pending_approvals = {}
 _approval_decisions = {}
 _always_allow = set()
@@ -250,6 +251,8 @@ async def chat(req: ChatRequest):
 
         while True:
             sys_prompt = _inject_workdir(_messages, _get_system_prompt())
+            if plan_mode:
+                sys_prompt += "\n\n## Plan Mode\nツールを一切使わず、実行計画のみを日本語で番号付きリストで出力すること。最後に '計画を確認しました。/go で実行します。' と書くこと。"
             trimmed = _trim_messages(_messages)
             trimmed = [m for m in trimmed if m.get("role") != "system"]
             trimmed = [{"role": "system", "content": sys_prompt}] + trimmed
@@ -331,6 +334,13 @@ def get_messages():
             "has_tool_calls": bool(m.get("tool_calls")),
         })
     return {"messages": display, "session_id": _current_session_id, "show_history": _config.get("show_history_on_startup", True)}
+
+
+@app.post("/plan_mode")
+async def set_plan_mode(body: dict):
+    global plan_mode
+    plan_mode = body.get("mode", False)
+    return {"plan_mode": plan_mode}
 
 @app.post("/clear")
 def clear():
