@@ -41,7 +41,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 /* Messages */
 .msg-user{background:var(--user-bg);padding:0 2px;display:block;width:100%;margin-bottom:6px}
 .msg-user .prompt-mark{color:#555555;font-weight:normal;font-size:12px}
-.msg-user .user-text{color:var(--user-text);letter-spacing:0.15em}
+.msg-user .user-text{color:var(--user-text);letter-spacing:0.15em;white-space:pre-wrap;word-break:break-word}
 .msg-assistant{color:var(--output);white-space:pre-wrap;word-break:break-word;padding-left:20px;letter-spacing:0.15em;margin-top:10px;margin-bottom:10px}
 .msg-thinking{color:var(--thinking);padding-left:40px}
 .msg-tool-call{color:var(--tool-call);margin-top:8px;margin-bottom:0}
@@ -66,7 +66,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 /* Input area */
 .input-wrap{flex-shrink:0;background:var(--bg)}
 .sep-line{height:2px;background:#5a5a5a}
-.input-row{display:flex;align-items:center;padding:2px 18px;background:var(--bg);min-height:20px}
+.input-row{display:flex;align-items:flex-start;padding:2px 18px;background:var(--bg);min-height:20px}
 .input-row .prompt-mark{color:var(--prompt);font-weight:bold;flex-shrink:0;user-select:none}
 .chat-input{flex:1;background:transparent;border:none;outline:none;color:var(--output);font-family:inherit;font-size:inherit;line-height:inherit;caret-color:var(--prompt)}
 .chat-input:disabled{opacity:0.5}

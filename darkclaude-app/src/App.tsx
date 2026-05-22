@@ -215,10 +215,10 @@ export default function App() {
           <div className="sep-line"/>
           <div className="input-row">
             <span className="prompt-mark">{">"}  </span>
-            <input ref={inputRef} className="chat-input" value={input}
-              onChange={e=>setInput(e.target.value)}
+            <textarea ref={inputRef as any} className="chat-input" value={input}
+              onChange={e=>{setInput(e.target.value);const t=e.target;t.style.height="auto";t.style.height=t.scrollHeight+"px"}}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}
-              autoFocus disabled={thinking} spellCheck={false}/>
+              autoFocus disabled={thinking} spellCheck={false} rows={1}/>
           </div>
           <div className="sep-line"/>
         </div>
