@@ -6,7 +6,7 @@ $nanoPath  = "C:\Users\tomo_rrow\Documents\nanoclaude"
 Write-Host "==> Starting llama-server..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList @(
     "-NoExit", "-Command",
-    "cd '$llamaPath'; .\start_llama_server.ps1"
+    "cd '$nanoPath'; .\start_llama_server.ps1"
 )
 
 # 2. llama-server が起動するまで待つ
@@ -42,3 +42,4 @@ Start-Sleep 2
 Write-Host "==> Launching DarkClaude..." -ForegroundColor Cyan
 Set-Location "$nanoPath\darkclaude-app"
 npm run tauri dev
+
