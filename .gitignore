@@ -26,3 +26,5 @@ training/unsloth_compiled_cache/
 # ベンチマークレポート (一時実行結果は除外、ベースラインは git add -f で明示追加)
 benchmarks/reports/*.json
 !benchmarks/reports/v0.9-beta.json
+
+.darkclaude/sessions.db
