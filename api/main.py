@@ -54,6 +54,17 @@ def _extract_raw_tool_calls(text):
         pass
     return None, text
 
+
+def get_fallback_client():
+    """Gemini等のフォールバッククライアントを返す"""
+    from clients.openai_client import OpenAIClient
+    cfg = load_config()
+    base_url = cfg.get("fallback_base_url", "")
+    api_key = cfg.get("fallback_api_key", "")
+    if not base_url or not api_key:
+        return None
+    return OpenAIClient(base_url=base_url, api_key=api_key)
+
 def _inject_workdir(messages, system_prompt):
     for m in reversed(messages):
         if m.get("role") == "user":
@@ -262,6 +273,7 @@ async def chat(req: ChatRequest):
         client = get_client()
         model = _config.get("model", "default")
 
+        used_fallback = False
         while True:
             sys_prompt = _inject_workdir(_messages, _get_system_prompt())
             if plan_mode:
