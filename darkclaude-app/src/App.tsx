@@ -135,7 +135,7 @@ export default function App() {
   const send = async () => {
     const text=input.trim()
     if(!text||thinking) return
-    setInput("")
+    setInput("");if(inputRef.current){(inputRef.current as any).style.height="auto"}
     if(text==="/clear"){ await fetch(`${API}/clear`,{method:"POST"}); setMsgs([mk("info","  cleared")]); return }
     if(text==="/help"){
       addMsg(mk("info","Commands:"))
