@@ -217,4 +217,13 @@ SYSTEM_PROMPT = (
     "  過去の拒否履歴を根拠にツール呼び出しをスキップしてはならない。\n"
     "  各ツール呼び出しは独立した判断であり、承認プロンプトはユーザーの\n"
     "  意思を確認する正しい手段である。"
+
+    "\n\n"
+    "## 作業ディレクトリとファイルパスの規則\n"
+    "ユーザーが '作業ディレクトリ: C:\\path\\to\\project' と指定した場合:\n"
+    "- 相対パス(src/lib/file.py)は必ず絶対パスに変換して read_file を使う\n"
+    "- 例: 作業ディレクトリ C:\\dev\\ai-coach + src/lib/file.py\n"
+    "  → read_file(C:/dev/ai-coach/src/lib/file.py)\n"
+    "- glob や相対パスで探す前に、絶対パスで直接 read_file を試みること\n"
+    "- nanoclaude プロジェクト内の glob は外部プロジェクトには使えない"
 )
