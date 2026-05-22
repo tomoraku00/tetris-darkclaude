@@ -28,7 +28,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "bash",
-        "description": "PowerShell コマンドをプロジェクトルートで実行し、stdout+stderr を返す。他のツール（read_file, write_file, grep, glob, str_replace）で代替できない場合にのみ使用する。長時間 I/O（ollama pull 等）は timeout パラメータで延長すること（デフォルト 120、最大 600）。",
+        "description": "PowerShell コマンドを実行し stdout+stderr を返す。外部プロジェクトへのアクセス・ファイル一覧(Get-ChildItem)・インストール等に使う。他のツールで代替できる場合はそちらを優先。長時間処理は timeout を延長すること（デフォルト 120、最大 600）。",
         "parameters": {
             "type": "object",
             "properties": {

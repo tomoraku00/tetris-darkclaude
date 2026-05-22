@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 from typing import Iterator
 
 PROJECT_ROOT = Path.cwd().resolve()
@@ -15,7 +15,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "glob",
-        "description": "プロジェクト内のファイルパスを glob パターンで検索し、マッチしたパスのリストを返す。ファイルパスの検索に使う。ファイル内容の検索には grep を使うこと。",
+        "description": "nanoclaude プロジェクト内のファイルパスを glob パターンで検索する。外部プロジェクト(C:/dev/...等)のファイル検索には bash の Get-ChildItem を使うこと。ファイル内容の検索には grep を使うこと。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -78,3 +78,4 @@ def run(pattern: str, path: str = ".") -> str:
         output = output[:_MAX_OUTPUT] + "\n... (output truncated at 4000 chars)"
 
     return output
+

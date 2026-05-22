@@ -17,7 +17,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "grep",
-        "description": "プロジェクト内のファイル内容を正規表現で検索し、マッチした行を返す。ファイル内容の検索に使う。ファイルパスの検索には glob を使うこと。",
+        "description": "nanoclaude プロジェクト内のファイル内容を正規表現で検索する。外部プロジェクト(C:/dev/...等)のファイル検索には bash の Select-String を使うこと。ファイルパスの検索には glob を使うこと。",
         "parameters": {
             "type": "object",
             "properties": {
