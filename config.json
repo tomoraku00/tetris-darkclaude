@@ -8,5 +8,6 @@
   "auto_compaction": true,
   "compaction_threshold": 0.7,
   "compaction_recent_turns": 5,
-  "reflexion_max_chars": 4000
+  "reflexion_max_chars": 4000,
+  "show_history_on_startup": false
 }

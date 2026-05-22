@@ -177,7 +177,7 @@ def status():
     return {"model": _config.get("model","unknown"),
             "base_url": _config.get("base_url","http://localhost:8080"),
             "vram_used": vu, "vram_free": vf,
-            "session_id": _current_session_id}
+            "session_id": _current_session_id, "show_history": _config.get("show_history_on_startup", True)}
 
 
 @app.post("/approve")
@@ -299,12 +299,12 @@ def get_messages():
             "name": m.get("name"),
             "has_tool_calls": bool(m.get("tool_calls")),
         })
-    return {"messages": display, "session_id": _current_session_id}
+    return {"messages": display, "session_id": _current_session_id, "show_history": _config.get("show_history_on_startup", True)}
 
 @app.post("/clear")
 def clear():
     reset_messages()
-    return {"status": "ok", "session_id": _current_session_id}
+    return {"status": "ok", "session_id": _current_session_id, "show_history": _config.get("show_history_on_startup", True)}
 
 
 if __name__ == "__main__":

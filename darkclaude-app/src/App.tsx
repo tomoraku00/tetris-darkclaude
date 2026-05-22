@@ -110,7 +110,7 @@ export default function App() {
         mk("info"," Type /help for commands."),
         mk("info",""),
       ]
-      fetch(`${API}/messages`).then(r=>r.json()).then((data:any)=>{
+      fetch(`${API}/messages`).then(r=>r.json()).then((data:any)=>{ if(!d.show_history){data={messages:[]}}; 
         const history:Msg[] = []
         for(const m of (data.messages||[])){
           if(m.role==="user") history.push(mk("user",m.content))
