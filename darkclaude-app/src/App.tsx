@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+﻿import { useState, useEffect, useRef, useCallback } from "react"
 import "./App.css"
 
 const API = "http://127.0.0.1:8765"
@@ -141,9 +141,9 @@ export default function App() {
       addMsg(mk("info","Commands:"))
       addMsg(mk("info","  /exit /quit /bye  — 終了"))
       addMsg(mk("info","  /help             — このヘルプ"))
-      addMsg(mk("info","  /clear            — 画面クリア"
+      addMsg(mk("info","  /clear            — 画面クリア"))
       addMsg(mk("info","  /plan             — 計画モード ON (ツール実行なし)"))
-      addMsg(mk("info","  /go               — 計画モード OFF (実行開始)"))))
+      addMsg(mk("info","  /go               — 計画モード OFF (実行開始)"))
       return
     }
     if(["/exit","/quit","/bye"].includes(text)){ window.close(); return }
