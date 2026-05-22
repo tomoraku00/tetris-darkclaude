@@ -249,7 +249,7 @@ async def chat(req: ChatRequest):
         model = _config.get("model", "default")
 
         while True:
-            sys_prompt = _inject_workdir(_messages, build_system_prompt())
+            sys_prompt = _inject_workdir(_messages, _get_system_prompt())
             trimmed = _trim_messages(_messages)
             trimmed = [m for m in trimmed if m.get("role") != "system"]
             trimmed = [{"role": "system", "content": sys_prompt}] + trimmed
