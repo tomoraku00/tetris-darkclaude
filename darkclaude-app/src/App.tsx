@@ -100,7 +100,7 @@ export default function App() {
   useEffect(()=>{
     fetch(`${API}/status`).then(r=>r.json()).then((d:StatusInfo)=>{
       setStatus(d)
-      setMsgs([
+      const header = [
         mk("info",""),
         mkKV(" version    ","v0.9-beta","info-ver"),
         mkKV(" model      ",d.model,"info-val"),
@@ -109,7 +109,17 @@ export default function App() {
         mk("info",""),
         mk("info"," Type /help for commands."),
         mk("info",""),
-      ])
+      ]
+      fetch(`${API}/messages`).then(r=>r.json()).then((data:any)=>{
+        const history:Msg[] = []
+        for(const m of (data.messages||[])){
+          if(m.role==="user") history.push(mk("user",m.content))
+          else if(m.role==="assistant"&&m.content) history.push(mk("assistant",m.content))
+          else if(m.role==="tool"&&m.content) history.push(mk("tool_result",m.content,{name:m.name}))
+        }
+        if(history.length>0) history.unshift(mk("separator","─".repeat(40)))
+        setMsgs([...header,...history])
+      }).catch(()=>setMsgs(header))
     }).catch(()=>setMsgs([mk("error","API server not running. Run: python api/main.py")]))
   },[])
 

@@ -285,6 +285,22 @@ async def chat(req: ChatRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+
+@app.get("/messages")
+def get_messages():
+    """表示用メッセージ一覧（system除く）"""
+    display = []
+    for m in _messages:
+        if m.get("role") == "system":
+            continue
+        display.append({
+            "role": m.get("role"),
+            "content": m.get("content") or "",
+            "name": m.get("name"),
+            "has_tool_calls": bool(m.get("tool_calls")),
+        })
+    return {"messages": display, "session_id": _current_session_id}
+
 @app.post("/clear")
 def clear():
     reset_messages()
