@@ -21,9 +21,9 @@ Push-Location $llamaDir
 try {
     .\llama-server.exe `
       -m $modelPath `
-      -c 8192 `
+      -c 16384 `
       -ngl 999 `
-      --n-cpu-moe 38 `
+      --n-cpu-moe 40 `
       -fa on `
       -t 16 `
       -b 2048 -ub 2048 `
