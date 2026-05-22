@@ -274,6 +274,7 @@ async def chat(req: ChatRequest):
         model = _config.get("model", "default")
 
         used_fallback = False
+        error_count = 0
         while True:
             sys_prompt = _inject_workdir(_messages, _get_system_prompt())
             if plan_mode:
@@ -335,6 +336,12 @@ async def chat(req: ChatRequest):
                         continue
 
                 result = await asyncio.to_thread(dispatch, name, args)
+                if str(result).startswith("ERROR:"):
+                    error_count += 1
+                    if error_count >= 2:
+                        result += "\n\n[ヒント] 同じエラーが続いています。別のアプローチを試してください: 絶対パスを使う / 別のツールを使う / パスを確認する"
+                else:
+                    error_count = 0
                 tool_msg = {"role":"tool","content":result,"name":name}
                 _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
                 yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result})}\n\n"
