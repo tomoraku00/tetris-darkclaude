@@ -39,14 +39,14 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .chat-log::-webkit-scrollbar-thumb{background:var(--sep);border-radius:2px}
 
 /* Messages */
-.msg-user{background:var(--user-bg);padding:0 2px;display:block;width:100%}
+.msg-user{background:var(--user-bg);padding:0 2px;display:block;width:100%;margin-bottom:6px}
 .msg-user .prompt-mark{color:#555555;font-weight:normal;font-size:12px}
 .msg-user .user-text{color:var(--user-text);letter-spacing:0.15em}
-.msg-assistant{color:var(--output);white-space:pre-wrap;word-break:break-word;padding-left:20px;letter-spacing:0.15em}
+.msg-assistant{color:var(--output);white-space:pre-wrap;word-break:break-word;padding-left:20px;letter-spacing:0.15em;margin-top:10px;margin-bottom:10px}
 .msg-thinking{color:var(--thinking);padding-left:40px}
-.msg-tool-call{color:var(--tool-call)}
-.msg-tool-ok{color:var(--tool-ok)}
-.msg-tool-err{color:var(--tool-err)}
+.msg-tool-call{color:var(--tool-call);margin-top:8px;margin-bottom:0}
+.msg-tool-ok{color:var(--tool-ok);margin-bottom:0}
+.msg-tool-err{color:var(--tool-err);margin-bottom:0}
 .msg-elapsed{color:var(--muted)}
 .msg-error{color:var(--tool-err)}
 .msg-info{color:var(--muted);white-space:pre;display:flex}
