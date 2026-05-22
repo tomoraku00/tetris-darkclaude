@@ -41,6 +41,19 @@ def _load_config():
 
 import re
 
+
+def _extract_raw_tool_calls(text):
+    """テキスト中の生JSONツール呼び出しを抽出"""
+    if not text or not text.strip().startswith("{"):
+        return None, text
+    try:
+        data = json.loads(text.strip())
+        if "tool_calls" in data:
+            return data["tool_calls"], data.get("text", "")
+    except Exception:
+        pass
+    return None, text
+
 def _inject_workdir(messages, system_prompt):
     for m in reversed(messages):
         if m.get("role") == "user":
