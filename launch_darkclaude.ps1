@@ -1,9 +1,12 @@
 ﻿# DarkClaude ランチャー
-$nanoPath = "C:\Users\tomo_rrow\Documents\nanoclaude"
+$nanoPath  = "C:\Users\tomo_rrow\Documents\nanoclaude"
+$llamaDir  = "$env:USERPROFILE\llamacpp\llama-b9264-bin-win-cuda-12.4-x64"
+$modelPath = "$env:USERPROFILE\models\Qwen3.6-35B-A3B-UD-Q3_K_XL.gguf"
 
-# 1. llama-server を別ウィンドウで起動
+# 1. llama-server を別ウィンドウで起動（コマンド直接実行）
 Write-Host "==> Starting llama-server..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy","Bypass","-NoExit","-File","$nanoPath\start_llama_server.ps1" -WorkingDirectory $nanoPath
+$cmd = "cd '$llamaDir'; .\llama-server.exe -m '$modelPath' -c 8192 -ngl 999 --n-cpu-moe 38 -fa on -t 16 -b 2048 -ub 2048 -ctk q4_0 -ctv q4_0 --port 8080 --jinja --reasoning off --reasoning-budget 0 --kv-unified"
+Start-Process powershell -ArgumentList "-NoExit","-Command",$cmd
 
 # 2. llama-server が起動するまで待つ
 Write-Host "==> Waiting for llama-server..." -ForegroundColor Cyan
@@ -23,7 +26,7 @@ if (-not $ready) {
 
 # 3. FastAPI を別ウィンドウで起動
 Write-Host "==> Starting FastAPI..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy","Bypass","-NoExit","-Command","cd '$nanoPath'; python api/main.py" -WorkingDirectory $nanoPath
+Start-Process powershell -ArgumentList "-NoExit","-Command","cd '$nanoPath'; python api/main.py"
 Start-Sleep 3
 
 # 4. Tauri アプリを起動
