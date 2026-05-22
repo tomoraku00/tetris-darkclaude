@@ -13,7 +13,7 @@ Write-Host "==> Waiting for llama-server..." -ForegroundColor Cyan
 $maxWait = 120; $elapsed = 0; $ready = $false
 while ($elapsed -lt $maxWait) {
     try {
-        $r = Invoke-WebRequest -Uri "http://127.0.0.1:8080/health" -TimeoutSec 2 -ErrorAction Stop
+        $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8080/health" -TimeoutSec 2 -ErrorAction Stop
         if ($r.StatusCode -eq 200) { $ready = $true; break }
     } catch {}
     Start-Sleep 2; $elapsed += 2
@@ -33,4 +33,5 @@ Start-Sleep 3
 Write-Host "==> Launching DarkClaude..." -ForegroundColor Cyan
 Set-Location "$nanoPath\darkclaude-app"
 npm run tauri dev
+
 
