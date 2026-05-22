@@ -1,3 +1,4 @@
+import re
 # -*- coding: utf-8 -*-
 """DarkClaude FastAPI backend - Skills / Resumable / Approval"""
 import sys, json, asyncio, uuid, sqlite3
@@ -36,6 +37,18 @@ def _load_config():
         return {}
 
 
+
+import re
+
+def _inject_workdir(messages, system_prompt):
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            text = str(m.get("content", ""))
+            match = re.search(r"作業ディレクトリ[：:]\s*([^\s\n]+)", text)
+            if match:
+                workdir = match.group(1).replace("\\", "/")
+                return system_prompt + f"\n\n現在の作業ディレクトリ: {workdir}\n相対パスは {workdir}/相対パス の形式で read_file を呼ぶこと。"
+    return system_prompt
 
 def _trim_messages(messages, max_chars=20000):
     """コンテキストが長すぎる場合、古いメッセージを削除する"""
@@ -236,7 +249,10 @@ async def chat(req: ChatRequest):
         model = _config.get("model", "default")
 
         while True:
+            sys_prompt = _inject_workdir(_messages, build_system_prompt())
             trimmed = _trim_messages(_messages)
+            trimmed = [m for m in trimmed if m.get("role") != "system"]
+            trimmed = [{"role": "system", "content": sys_prompt}] + trimmed
             response = await asyncio.to_thread(client.chat, model, trimmed, TOOL_SCHEMAS)
             msg = response.get("message", {})
             _messages.append(msg)

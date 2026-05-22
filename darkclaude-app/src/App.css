@@ -39,7 +39,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .chat-log::-webkit-scrollbar-thumb{background:var(--sep);border-radius:2px}
 
 /* Messages */
-.msg-user{background:var(--user-bg);padding:0 2px;display:block;width:100%;margin-bottom:6px}
+.msg-user{background:var(--user-bg);padding:0 2px;display:flex;align-items:flex-start;width:100%;margin-bottom:6px}
 .msg-user .prompt-mark{color:#555555;font-weight:normal;font-size:12px}
 .msg-user .user-text{color:var(--user-text);letter-spacing:0;white-space:pre-wrap;word-break:break-word}
 .msg-assistant{color:#ffffff;white-space:pre-wrap;word-break:break-word;padding-left:18px;letter-spacing:0;margin-top:16px;margin-bottom:16px}
