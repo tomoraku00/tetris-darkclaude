@@ -36,6 +36,20 @@ def _load_config():
         return {}
 
 
+
+def _trim_messages(messages, max_chars=20000):
+    """コンテキストが長すぎる場合、古いメッセージを削除する"""
+    total = sum(len(str(m.get("content","")))+len(str(m.get("tool_calls",""))) for m in messages)
+    if total <= max_chars:
+        return messages
+    # system prompt は保持、古いメッセージから削除
+    system = [m for m in messages if m.get("role") == "system"]
+    others = [m for m in messages if m.get("role") != "system"]
+    while len(others) > 4 and total > max_chars:
+        removed = others.pop(0)
+        total -= len(str(removed.get("content","")))
+    return system + others
+
 def get_client():
     global _client
     if _client is None:
@@ -222,7 +236,8 @@ async def chat(req: ChatRequest):
         model = _config.get("model", "default")
 
         while True:
-            response = await asyncio.to_thread(client.chat, model, _messages, TOOL_SCHEMAS)
+            trimmed = _trim_messages(_messages)
+            response = await asyncio.to_thread(client.chat, model, trimmed, TOOL_SCHEMAS)
             msg = response.get("message", {})
             _messages.append(msg)
             _save_msg(_current_session_id, msg)

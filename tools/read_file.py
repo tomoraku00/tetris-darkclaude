@@ -1,29 +1,25 @@
-from pathlib import Path
-
+﻿from pathlib import Path
 PROJECT_ROOT = Path.cwd().resolve()
-
 SCHEMA = {
     "type": "function",
     "function": {
         "name": "read_file",
-        "description": "プロジェクト内のファイルを読み込み、内容を文字列で返す。ファイル編集前に必ず使用すること（既存内容の確認用）。コード調査や仕様確認にも使用する。",
+        "description": "ファイルを読み込み内容を返す。絶対パス(C:/dev/...)または相対パス(src/main.py)どちらも使用可。",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "プロジェクトルートからの相対パス（例: 'main.py'）"
+                    "description": "絶対パス(例: C:/dev/src/main.py)またはプロジェクトルートからの相対パス(例: src/main.py)"
                 }
             },
             "required": ["path"]
         }
     }
 }
-
 def run(path: str) -> str:
-    target = (PROJECT_ROOT / path).resolve()
-    if not target.is_relative_to(PROJECT_ROOT):
-        return f"ERROR: path outside project root: {path}"
+    p = Path(path)
+    target = p.resolve() if p.is_absolute() else (PROJECT_ROOT / path).resolve()
     if not target.exists():
         return f"ERROR: file not found: {path}"
     if not target.is_file():
@@ -31,4 +27,4 @@ def run(path: str) -> str:
     try:
         return target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        return f"ERROR: cannot decode as utf-8: {path}"
+        return target.read_text(encoding="utf-8-sig")

@@ -39,9 +39,8 @@ SCHEMA = {
 
 
 def run(path: str, old_str: str, new_str: str) -> str:
-    target = (PROJECT_ROOT / path).resolve()
-    if not target.is_relative_to(PROJECT_ROOT):
-        return f"ERROR: path outside project root: {path}"
+    p = Path(path)
+    target = p.resolve() if p.is_absolute() else (PROJECT_ROOT / path).resolve()
     if not target.exists():
         return f"ERROR: file not found: {path}"
     if not target.is_file():
