@@ -293,7 +293,7 @@ async def chat(req: ChatRequest):
                 result = await asyncio.to_thread(dispatch, name, args)
                 tool_msg = {"role":"tool","content":result,"name":name}
                 _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
-                yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result[:500]})}\n\n"
+                yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result})}\n\n"
 
         yield "data: [DONE]\n\n"
 
