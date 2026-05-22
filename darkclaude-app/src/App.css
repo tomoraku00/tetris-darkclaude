@@ -42,7 +42,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .msg-user{background:var(--user-bg);padding:0 2px;display:block;width:100%;margin-bottom:6px}
 .msg-user .prompt-mark{color:#555555;font-weight:normal;font-size:12px}
 .msg-user .user-text{color:var(--user-text);letter-spacing:0.15em;white-space:pre-wrap;word-break:break-word}
-.msg-assistant{color:var(--output);white-space:pre-wrap;word-break:break-word;padding-left:20px;letter-spacing:0.15em;margin-top:10px;margin-bottom:10px}
+.msg-assistant{color:#ffffff;white-space:pre-wrap;word-break:break-word;padding-left:18px;letter-spacing:0.15em;margin-top:16px;margin-bottom:16px;border-left:3px solid #ffffff}
 .msg-thinking{color:var(--thinking);padding-left:40px}
 .msg-tool-call{color:var(--tool-call);margin-top:8px;margin-bottom:0}
 .msg-tool-ok{color:var(--tool-ok);margin-bottom:0}
