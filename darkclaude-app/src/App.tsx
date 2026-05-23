@@ -242,11 +242,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="banner-wrap">
-        <pre className="banner-text">{"\n" + BANNER}</pre>
-        <pre className="banner-mascot">{MASCOT}</pre>
-      </div>
       <div className="chat-log">
+        <div className="banner-wrap">
+          <pre className="banner-text">{"\n" + BANNER}</pre>
+          <pre className="banner-mascot">{MASCOT}</pre>
+        </div>
         {msgs.map(m=><MsgLine key={m.id} msg={m}/>)}
         <div ref={bottomRef}/>
       </div>
