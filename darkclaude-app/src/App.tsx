@@ -270,8 +270,12 @@ export default function App() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === 'c' && e.ctrlKey && thinking && !approval) {
-        e.preventDefault()
-        handleStop()
+        const active = document.activeElement
+        const isInput = active === inputRef.current || (active as HTMLElement)?.tagName === 'TEXTAREA'
+        if (isInput) {
+          e.preventDefault()
+          handleStop()
+        }
       }
     }
     window.addEventListener('keydown', h)
@@ -318,7 +322,7 @@ export default function App() {
         <span className="st-val">{status.model}</span>
         <span className="st-muted"> · </span>
         <span className="st-mode">Phase A6 stabilization</span>
-        <span className="st-muted">  ·  Ctrl+Y: copy mode</span>
+        
         {thinkingTxt&&<><span className="st-muted"> · </span><span className="st-think">{thinkingTxt}</span></>}
         <span style={{flex:1}}/>
         <span className="st-muted">⏱ </span>
