@@ -3,6 +3,7 @@
 使い方:
     python benchmarks/compare.py reports/v0.9-beta.json reports/exp-claude-md.json
 """
+import csv
 import json
 import sys
 from pathlib import Path

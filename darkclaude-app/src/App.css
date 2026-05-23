@@ -91,3 +91,6 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .approval-hint{color:#5a5a5a;font-size:11px;padding:6px 0 4px 0}
 
 .input-row .prompt-mark{color:#7a7a7a;font-weight:normal;margin-right:6px}
+.thinking-indicator{color:var(--thinking);padding:4px 8px 8px 8px;font-family:inherit;font-size:inherit}
+.thinking-spinner{display:inline-block;animation:spin-thinking 0.8s steps(8) infinite}
+@keyframes spin-thinking{to{content:'⣿';transform:rotate(360deg)}}

@@ -4,7 +4,7 @@ def main():
     secret_number = random.randint(1, 100)
     attempts = 0
     
-    print("1から100までの数を思い浮かべてください！")
+    print("1から100の数字を当ててみよう！")
     print("ヒント: 大きい・小さいを教えていきます。")
     
     while True:

@@ -1,4 +1,4 @@
-﻿"""OpenAI 互換 API (llama-server) 経由のクライアント。"""
+"""OpenAI 互換 API (llama-server) 経由のクライアント。"""
 import json
 import requests
 
@@ -54,7 +54,7 @@ class OpenAIClient:
                 try:
                     tc["function"]["arguments"] = json.loads(args)
                 except json.JSONDecodeError:
-                    tc["function"]["arguments"] = {}
+                    tc["function"]["arguments"] = {"__parse_error__": True, "__raw__": str(args)}
 
         return {"message": msg}
 

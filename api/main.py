@@ -334,9 +334,9 @@ async def chat(req: ChatRequest):
                         'args': args,
                     }
                     yield f"data: {json.dumps(approval_event)}\n\n"
+                    approval_timeout = _config.get("approval_timeout_sec", 300)
                     try:
-                        approval_timeout = _config.get("approval_timeout_sec", 300)
-                    await asyncio.wait_for(ev.wait(), timeout=approval_timeout)
+                        await asyncio.wait_for(ev.wait(), timeout=approval_timeout)
                     except asyncio.TimeoutError:
                         del _pending_approvals[aid]
                         result = "USER_DENIED: timeout"

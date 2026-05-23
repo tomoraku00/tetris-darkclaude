@@ -253,6 +253,7 @@ export default function App() {
       {approval&&<ApprovalDialog data={approval} onDecide={handleApproval}/>}
       {!approval&&(
         <div className="input-wrap">
+          {thinking&&<div className="thinking-indicator"><span className="thinking-spinner">⣾</span> {thinkingTxt||"Thinking..."}</div>}
           <div className="sep-line"/>
           <div className="input-row">
             <span className="prompt-mark">{">"}  </span>
