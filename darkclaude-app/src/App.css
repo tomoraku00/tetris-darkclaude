@@ -88,7 +88,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .approval-q{color:var(--output);padding:8px 0 4px 0}
 .appr-opt{color:#7a7a7a;cursor:pointer;padding:3px 0 3px 2ch}
 .appr-opt:hover{color:var(--output)}
-.appr-sel{color:#ffffff;font-weight:bold;cursor:pointer;padding:3px 0}
+.appr-sel{color:var(--output);font-weight:bold;cursor:pointer;padding:3px 0}
 .approval-hint{color:#5a5a5a;font-size:11px;padding:6px 0 4px 0}
 
 .input-row .prompt-mark{color:#7a7a7a;font-weight:normal;margin-right:6px}
@@ -102,3 +102,4 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .tc-bullet{color:#ffffff}.tc-name{color:var(--muted)}.tc-args{color:var(--muted)}.tc-tree{color:var(--muted)}
 .thinking-meta{color:var(--muted);font-size:0.9em}
 .thinking-action{color:var(--muted);padding-left:16px;font-size:0.9em}
+.appr-arrow{color:var(--st-mode)}.appr-sel-text{color:var(--st-mode)}

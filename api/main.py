@@ -300,6 +300,10 @@ async def chat(req: ChatRequest):
             _messages.append(msg)
             _save_msg(_current_session_id, msg)
 
+            usage = response.get("usage", {})
+            total_tokens = usage.get("completion_tokens", 0)
+            if total_tokens > 0:
+                yield f"data: {json.dumps({'type':'token_count','tokens':total_tokens})}\n\n"
             tool_calls = msg.get("tool_calls") or []
             if not tool_calls:
                 yield f"data: {json.dumps({'type':'text','content':msg.get('content','')})}\n\n"

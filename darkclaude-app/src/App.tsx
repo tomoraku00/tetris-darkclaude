@@ -79,7 +79,7 @@ function ApprovalDialog({data,onDecide}:{data:ApprovalData;onDecide:(d:string)=>
       <div className="approval-q">Do you want to proceed?</div>
       {opts.map((o,i)=>(
         <div key={i} className={i===sel?"appr-sel":"appr-opt"} onClick={()=>decide(i)}>
-          {i===sel?"> ":"  "}{i+1}. {o}
+          {i===sel?<span className="appr-arrow">&gt; </span>:<span>  </span>}{i+1}. <span className={i===sel?"appr-sel-text":""}>{o}</span>
         </div>
       ))}
       <div className="approval-sep-bot"/>
@@ -224,6 +224,8 @@ export default function App() {
               addMsg(mk(inCode?"code":"assistant", l))
             }
             addMsg(mk("info",""))
+          } else if(ev.type==="token_count"){
+            setThinkingTokens(t=>t+(ev.tokens||0))
           } else if(ev.type==="tool_desc"){
             addMsg(mk("tool_desc",ev.text||""))
           } else if(ev.type==="tool_call"){

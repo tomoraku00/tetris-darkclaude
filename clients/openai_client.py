@@ -56,7 +56,7 @@ class OpenAIClient:
                 except json.JSONDecodeError:
                     tc["function"]["arguments"] = {"__parse_error__": True, "__raw__": str(args)}
 
-        return {"message": msg}
+        return {"message": msg, "usage": data.get("usage", {})}
 
     def _normalize_messages(self, messages):
         """tool 結果メッセージを Ollama 形式 → OpenAI 形式に変換。
