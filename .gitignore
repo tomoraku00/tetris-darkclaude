@@ -30,3 +30,7 @@ benchmarks/reports/*.json
 .darkclaude/sessions.db
 
 fix_*.py
+
+gen_splash.py
+check_lines.py
+fix_*.py
