@@ -6,17 +6,17 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "write_file",
-        "description": "プロジェクト内のファイルに内容を書き込む。新規ファイル作成、または明示的にファイル全体を置き換える場合にのみ使用すること。既存ファイルの局所編集（関数修正、docstring 追加、数行の変更など）には str_replace を使うこと。親ディレクトリがなければ自動作成。",
+        "description": "Write content to a file in the project. Use for new files or full rewrites only. For partial edits (fix a function, add docstring, multiple changes), use str_replace instead. Creates parent directories automatically.",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "プロジェクトルートからの相対パス"
+                    "description": "Relative path from project root"
                 },
                 "content": {
                     "type": "string",
-                    "description": "書き込む文字列"
+                    "description": "Content to write to the file"
                 }
             },
             "required": ["path", "content"]

@@ -1,41 +1,32 @@
 import difflib
-from tools import resolve_path, PROJECT_ROOT
+from pathlib import Path
+from tools import PROJECT_ROOT
 
 SCHEMA = {
     "type": "function",
     "function": {
         "name": "str_replace",
-        "description": (
-            "プロジェクト内ファイルの特定文字列を別の文字列に置換する。"
-            "局所編集（関数の修正、docstring 追加、数行の変更など）に使用。"
-            "ファイル全体の上書きには write_file を使うこと。"
-            "old_str は対象ファイル内で正確に 1 回だけ出現する必要があり、"
-            "複数箇所に存在する場合はエラーとなる。"
-        ),
+        "description": "Replace a unique string in a file with new text. Use for partial edits (fix a function, add docstring, multiple changes). Use write_file for full rewrites. old_str must appear exactly once in the file.",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "プロジェクトルートからの相対パス",
+                    "description": "Relative path from project root"
                 },
                 "old_str": {
                     "type": "string",
-                    "description": (
-                        "置換対象の文字列。ファイル中に正確に 1 回だけ出現する必要あり。"
-                        "一意性を確保するため、周辺コンテキストを含めること"
-                    ),
+                    "description": "String to replace. Must appear exactly once. Include surrounding context to ensure uniqueness."
                 },
                 "new_str": {
                     "type": "string",
-                    "description": "置換後の文字列。空文字列を指定すると old_str を削除",
-                },
+                    "description": "Replacement text. Empty string deletes old_str."
+                }
             },
-            "required": ["path", "old_str", "new_str"],
-        },
-    },
+            "required": ["path", "old_str", "new_str"]
+        }
+    }
 }
-
 
 def run(path: str, old_str: str, new_str: str) -> str:
     p = Path(path)
@@ -48,7 +39,6 @@ def run(path: str, old_str: str, new_str: str) -> str:
         content = target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return f"ERROR: cannot decode as utf-8: {path}"
-
     count = content.count(old_str)
     if count == 0:
         return f"ERROR: old_str not found in {path}"
@@ -57,7 +47,6 @@ def run(path: str, old_str: str, new_str: str) -> str:
             f"ERROR: old_str found {count} times in {path}, must be unique. "
             "Add more surrounding context to make it unique."
         )
-
     new_content = content.replace(old_str, new_str, 1)
     target.write_text(new_content, encoding="utf-8")
     diff_lines = list(difflib.unified_diff(

@@ -15,7 +15,7 @@ SCHEMA = {
     "type": "function",
     "function": {
         "name": "glob",
-        "description": "nanoclaude プロジェクト内のファイルパスを glob パターンで検索する。外部プロジェクト(C:/dev/...等)のファイル検索には bash の Get-ChildItem を使うこと。ファイル内容の検索には grep を使うこと。",
+        "description": "Find files matching a glob pattern. Returns matching file paths. Use ** for recursive search.",
         "parameters": {
             "type": "object",
             "properties": {

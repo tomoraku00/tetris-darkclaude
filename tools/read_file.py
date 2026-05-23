@@ -1,21 +1,24 @@
-from tools import resolve_path, PROJECT_ROOT
+from pathlib import Path
+from tools import PROJECT_ROOT
+
 SCHEMA = {
     "type": "function",
     "function": {
         "name": "read_file",
-        "description": "ファイルを読み込み内容を返す。絶対パス(C:/dev/...)または相対パス(src/main.py)どちらも使用可。",
+        "description": "Read a file and return its content. Accepts absolute path (C:/dev/...) or relative path (src/main.py).",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "絶対パス(例: C:/dev/src/main.py)またはプロジェクトルートからの相対パス(例: src/main.py)"
+                    "description": "Absolute path (e.g. C:/dev/src/main.py) or relative path from project root (e.g. src/main.py)"
                 }
             },
             "required": ["path"]
         }
     }
 }
+
 def run(path: str) -> str:
     p = Path(path)
     target = p.resolve() if p.is_absolute() else (PROJECT_ROOT / path).resolve()
