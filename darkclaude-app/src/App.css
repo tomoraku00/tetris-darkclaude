@@ -96,8 +96,9 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .thinking-spinner{display:inline-block;min-width:1.5em;text-align:center}
 
 .thinking-spacer{height:1.5em}
-.thinking-zone{flex-shrink:0;height:1.5em;padding:0 12px;color:var(--thinking);font-family:inherit;font-size:inherit}
+.thinking-zone{flex-shrink:0;min-height:1.5em;padding:0 12px;color:var(--thinking);font-family:inherit;font-size:inherit}
 
 
 .tc-bullet{color:#ffffff}.tc-name{color:var(--muted)}.tc-args{color:var(--muted)}.tc-tree{color:var(--muted)}
 .thinking-meta{color:var(--muted);font-size:0.9em}
+.thinking-action{color:var(--muted);padding-left:16px;font-size:0.9em}

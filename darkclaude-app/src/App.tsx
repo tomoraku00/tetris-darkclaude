@@ -93,6 +93,7 @@ export default function App() {
   const [thinking,setThinking] = useState(false)
   const [spinIdx,setSpinIdx] = useState(0)
   const [thinkingElapsed,setThinkingElapsed] = useState(0)
+  const [thinkingAction,setThinkingAction] = useState("")
   const [thinkingTokens,setThinkingTokens] = useState(0)
   const [dotsIdx,setDotsIdx] = useState(0)
   const [thinkingTxt,setThinkingTxt] = useState("")
@@ -142,7 +143,7 @@ export default function App() {
 
 
   useEffect(()=>{
-    if(!thinking){setThinkingElapsed(0);setThinkingTokens(0);return}
+    if(!thinking){setThinkingElapsed(0);setThinkingTokens(0);setThinkingAction("");return}
     const timer=setInterval(()=>setThinkingElapsed(s=>s+1),1000)
     return ()=>clearInterval(timer)
   },[thinking])
@@ -222,6 +223,8 @@ export default function App() {
           } else if(ev.type==="tool_desc"){
             addMsg(mk("tool_desc",ev.text||""))
           } else if(ev.type==="tool_call"){
+            const TDESC: Record<string,string> = {write_file:"ファイルを作成します",read_file:"ファイルを読み込みます",glob:"ファイルを検索します",bash:"コマンドを実行します",str_replace:"ファイルを編集します"}
+            setThinkingAction(TDESC[ev.name||""]||ev.name||"")
             const key=ev.args?.path??ev.args?.command??ev.args?.pattern??ev.args?.query??""
             const short=key.length>47?key.slice(0,44)+"...":key
             addMsg(mk("tool_call",short.replace(/\n/g,"↵"),{name:ev.name}))
@@ -278,7 +281,7 @@ export default function App() {
         }
         <div ref={bottomRef}/>
       </div>
-      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Brewing").replace(/\.+$/, "")}<span className="thinking-meta"> ({thinkingElapsed}s{thinkingTokens>0?` · ↓ ${thinkingTokens} tokens`:""})</span></> }</div>
+      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Brewing").replace(/\.+$/, "")}<span className="thinking-meta"> ({thinkingElapsed}s)</span>{thinkingAction&&<div className="thinking-action">└ {thinkingAction}</div>}</> }</div>
       {approval&&<ApprovalDialog data={approval} onDecide={handleApproval}/>}
       {!approval&&(
         <div className="input-wrap">
