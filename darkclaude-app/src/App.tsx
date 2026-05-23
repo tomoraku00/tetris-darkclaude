@@ -202,6 +202,12 @@ export default function App() {
             addMsg(mk("tool_call",short.replace(/\n/g,"↵"),{name:ev.name}))
           } else if(ev.type==="tool_result"){
             addMsg(mk("tool_result",ev.result.slice(0,100),{isError:ev.is_error,elapsed:ev.elapsed}))
+          } else if(ev.type==="diff_add"){
+            addMsg(mk("diff_add",ev.text||""))
+          } else if(ev.type==="diff_rm"){
+            addMsg(mk("diff_rm",ev.text||""))
+          } else if(ev.type==="diff_ctx"){
+            addMsg(mk("diff_ctx",ev.text||""))
           } else if(ev.type==="approval_needed"){
             setApproval(ev)
           }

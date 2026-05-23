@@ -1,3 +1,4 @@
+import difflib
 from pathlib import Path
 
 PROJECT_ROOT = Path.cwd().resolve()
@@ -61,4 +62,12 @@ def run(path: str, old_str: str, new_str: str) -> str:
 
     new_content = content.replace(old_str, new_str, 1)
     target.write_text(new_content, encoding="utf-8")
+    diff_lines = list(difflib.unified_diff(
+        old_str.splitlines(keepends=True),
+        new_str.splitlines(keepends=True),
+        lineterm=""
+    ))
+    if diff_lines:
+        diff_text = "\n".join(diff_lines[2:])
+        return f"Replaced 1 occurrence in {path}\n[DIFF_START]\n{diff_text}\n[DIFF_END]"
     return f"Replaced 1 occurrence in {path}"

@@ -364,9 +364,24 @@ async def chat(req: ChatRequest):
                         result += "\n\n[ヒント] 同じエラーが続いています。別のアプローチを試してください: 絶対パスを使う / 別のツールを使う / パスを確認する"
                 else:
                     error_count = 0
-                tool_msg = {"role":"tool","content":result,"name":name}
-                _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
-                yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result})}\n\n"
+                if "[DIFF_START]" in str(result):
+                    parts = str(result).split("[DIFF_START]")
+                    summary = parts[0].strip()
+                    diff_body = parts[1].split("[DIFF_END]")[0].strip() if "[DIFF_END]" in parts[1] else parts[1].strip()
+                    tool_msg = {"role":"tool","content":summary,"name":name}
+                    _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
+                    yield f"data: {json.dumps({'type':'tool_result','name':name,'result':summary})}\n\n"
+                    for dl in diff_body.splitlines():
+                        if dl.startswith("+"):
+                            yield f"data: {json.dumps({'type':'diff_add','text':dl})}\n\n"
+                        elif dl.startswith("-"):
+                            yield f"data: {json.dumps({'type':'diff_rm','text':dl})}\n\n"
+                        elif dl:
+                            yield f"data: {json.dumps({'type':'diff_ctx','text':dl})}\n\n"
+                else:
+                    tool_msg = {"role":"tool","content":result,"name":name}
+                    _messages.append(tool_msg); _save_msg(_current_session_id, tool_msg)
+                    yield f"data: {json.dumps({'type':'tool_result','name':name,'result':result})}\n\n"
 
         yield "data: [DONE]\n\n"
 
