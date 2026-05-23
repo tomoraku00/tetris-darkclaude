@@ -267,6 +267,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [approval])
 
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'c' && e.ctrlKey && thinking && !approval) {
+        e.preventDefault()
+        handleStop()
+      }
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [thinking, approval])
+
   const handleApproval = async (decision:string) => {
     if(!approval) return
     setApproval(null)
@@ -285,9 +296,10 @@ export default function App() {
         {thinking&&<>
         </>
         }
+        <div style={{paddingBottom:"1.5rem"}}/>
         <div ref={bottomRef}/>
       </div>
-      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Brewing").replace(/\.+$/, "")}<span className="thinking-meta"> ({thinkingElapsed}s)</span>{thinkingAction&&<div className="thinking-action">└ {thinkingAction}</div>}</> }</div>
+      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Brewing").replace(/\.+$/, "")}<span className="thinking-meta"> ({thinkingElapsed}s)</span></> }</div>
       {approval&&<ApprovalDialog data={approval} onDecide={handleApproval}/>}
       {!approval&&(
         <div className="input-wrap">
