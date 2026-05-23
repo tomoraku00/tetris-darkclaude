@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """CodeGraph 経由でコードベースを検索するツール。"""
 import subprocess
 from pathlib import Path

@@ -1,0 +1,2092 @@
+﻿
+=== __init__.py ===
+from .app import run
+
+=== app.py ===
+"""DarkClaude TUI Application (v0.9-beta) — フルスクリーン REPL 本体。"""
+import asyncio
+import atexit
+import json
+import sys
+import threading
+import time
+from pathlib import Path
+
+from prompt_toolkit import Application
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
+from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, Window
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout.dimension import D
+from prompt_toolkit.layout.layout import Layout
+
+from .style import DARKCLAUDE_STYLE
+from .banner import render_banner
+from .output import OutputBuffer
+from .status import make_status_fn
+from .chat import chat_turn, build_system_prompt
+from .approval import ApprovalDialog, decision_from_index
+from .copy_mode import CopyMode
+from . import progress as prog
+from clients import get_client
+from session_log import SessionLog
+
+# ---- 定数 ----
+
+DEFAULT_MODEL = "qwen3:8b"
+FALLBACK_MODEL = "qwen3:8b"
+DEFAULT_THINK_MODE = "show"
+THINK_MODES = ("show", "hide", "off")
+DEFAULT_LOGGING_ENABLED = True
+_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+
+_HELP_TEXT = """\
+Commands:
+  /exit /quit /bye        — 終了
+  /help                   — このヘルプを表示
+  /clear                  — 出力エリアをクリア
+  /plan                   — Plan モードトグル
+  /model [name]           — 現在のモデル確認 / 切り替え（セッション内）
+  /setmodel <name>        — モデル切り替え（config.json に永続化）
+  /think [show|hide|off]  — 思考モード切り替え
+  /logging [on|off|status]— ログ収集制御
+
+Keyboard:
+  Enter         — 送信（末尾に自動スクロール）
+  Ctrl+C        — 終了
+  Ctrl+L        — 出力クリア
+  Up / Down     — 入力履歴
+  PageUp / PageDown / マウスホイール — 出力スクロール
+  Home / End    — 最上 / 最下
+  Ctrl+Y        — コピーモード開始
+    ↑↓←→       — カーソル移動
+    Shift+↑↓←→ — 選択範囲拡張
+    v           — 選択開始 (Vim 風)
+    y / Enter   — 選択テキストをコピー → 終了
+    Esc / q     — コピーモード終了 (コピーしない)
+
+"""
+
+
+# ---- Config ----
+
+def _load_config() -> dict:
+    if _CONFIG_PATH.exists():
+        try:
+            return json.loads(_CONFIG_PATH.read_text(encoding="utf-8-sig"))
+        except Exception:
+            pass
+    return {"model": DEFAULT_MODEL}
+
+
+def _save_config(updates: dict) -> None:
+    try:
+        existing = json.loads(_CONFIG_PATH.read_text(encoding="utf-8-sig"))
+        if not isinstance(existing, dict):
+            existing = {}
+    except Exception:
+        existing = {}
+    existing.update(updates)
+    _CONFIG_PATH.write_text(
+        json.dumps(existing, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+# ---- エントリポイント ----
+
+def run() -> None:
+    """TUI を起動する。main.py から呼ばれる。"""
+
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    # ---- 設定読み込み ----
+    config = _load_config()
+    model: str = config.get("model", DEFAULT_MODEL)
+    think_mode: str = config.get("think_mode", DEFAULT_THINK_MODE)
+    logging_enabled: bool = config.get("logging_enabled", DEFAULT_LOGGING_ENABLED)
+    harness_mode: str = config.get("harness_mode", "claude_compat")
+    auto_compact: bool = config.get("auto_compaction", False)
+    compact_threshold: float = float(config.get("compaction_threshold", 0.7))
+    compact_recent_turns: int = int(config.get("compaction_recent_turns", 5))
+    reflexion_max_chars: int = int(config.get("reflexion_max_chars", 4000))
+
+    if think_mode not in THINK_MODES:
+        think_mode = DEFAULT_THINK_MODE
+    if not isinstance(logging_enabled, bool):
+        logging_enabled = DEFAULT_LOGGING_ENABLED
+
+    _save_config({"model": model, "think_mode": think_mode, "logging_enabled": logging_enabled})
+
+    # ---- セッション状態 ----
+    state: dict = {
+        "model": model,
+        "think_mode": think_mode,
+        "logging_enabled": logging_enabled,
+        "plan_mode": False,
+        "thinking": "",
+        "is_busy": False,
+    }
+    messages: list = []
+    allowed_write_paths: set[str] = set()
+    allowed_bash_commands: set[str] = set()
+
+    # ---- クライアント ----
+    client = get_client(config)
+    try:
+        available = client.list_models()
+        if available and model not in available:
+            if FALLBACK_MODEL in available:
+                model = FALLBACK_MODEL
+                state["model"] = model
+                _save_config({"model": model})
+    except Exception:
+        pass
+
+    # ---- セッションログ ----
+    _data_dir = Path(__file__).parent.parent / "data" / "conversations"
+    session_log = SessionLog(
+        enabled=logging_enabled,
+        base_dir=_data_dir,
+        dc_version="v0.9-beta",
+        model=model,
+        plan_mode=state["plan_mode"],
+        think_mode=think_mode,
+        system_prompt=build_system_prompt(state["plan_mode"], think_mode, harness_mode, reflexion_max_chars),
+    )
+    session_log.session_start()
+
+    # ---- OutputBuffer ----
+    output = OutputBuffer()
+    start_time = time.time()
+
+    # ---- 入力 Buffer ----
+    input_buf = Buffer(name="input", multiline=False, history=InMemoryHistory())
+
+    # ---- 承認 Dialog ----
+    approval = ApprovalDialog()
+
+    # ---- コピーモード ----
+    copy_mode = CopyMode()
+
+    # app / loop は起動後に格納
+    _app_ref: list[Application | None] = [None]
+    _loop_ref: list[asyncio.AbstractEventLoop | None] = [None]
+
+    # ---- ステータスライン ----
+    get_status = make_status_fn(state, start_time, copy_mode=copy_mode)
+
+    # ---- 承認関数 (TUI ネイティブ Dialog 版) ----
+    def _make_approval_fn(app: Application) -> object:
+        def approval_fn(name: str, args: dict) -> str:
+            loop = _loop_ref[0]
+            if loop is None:
+                # フォールバック: questionary 直接呼び出し
+                from tools.approval import request_approval
+                return request_approval(name, args)
+
+            # コマンド文字列の組み立て
+            if name == "bash":
+                cmd_text = args.get("command", "")
+                title = "Bash command"
+                emphasis = cmd_text[:60]
+            elif name == "write_file":
+                path = args.get("path", "")
+                cmd_text = f"Write to: {path}"
+                title = "Write file"
+                emphasis = path
+            elif name == "str_replace":
+                path = args.get("path", "")
+                old_s = str(args.get("old_str", ""))[:80].replace("\n", "↵")
+                new_s = str(args.get("new_str", ""))[:80].replace("\n", "↵")
+                cmd_text = f"Path: {path}\n- {old_s}\n+ {new_s}"
+                title = "Edit file"
+                emphasis = path
+            else:
+                cmd_text = str(args)[:120]
+                title = name
+                emphasis = name
+
+            result_holder: list[int] = [-1]
+            done_ev = threading.Event()
+
+            async def _show_dialog() -> None:
+                idx = await approval.show(title, cmd_text, emphasis=emphasis)
+                result_holder[0] = idx
+                done_ev.set()
+                app.invalidate()
+
+            future = asyncio.run_coroutine_threadsafe(_show_dialog(), loop)
+            done_ev.wait(timeout=300)
+
+            idx = result_holder[0]
+            if idx < 0:
+                return "deny"
+            return decision_from_index(idx)
+
+        return approval_fn
+
+    # ---- コマンドハンドラ ----
+    def handle_command(text: str) -> bool:
+        app = _app_ref[0]
+
+        if text in ("/exit", "/quit", "/bye"):
+            output.append("Goodbye!\n")
+            session_log.close("user_exit")
+            prog.clear()
+            if app:
+                app.exit()
+            return True
+
+        if text == "/help":
+            output.append(_HELP_TEXT)
+            return True
+
+        if text == "/clear":
+            output.clear()
+            return True
+
+        if text == "/plan":
+            state["plan_mode"] = not state["plan_mode"]
+            status = "ON" if state["plan_mode"] else "OFF"
+            output.append(f"Plan モード: {status}\n\n")
+            session_log.update_context(plan_mode=state["plan_mode"])
+            return True
+
+        if text == "/model" or text.startswith("/model "):
+            name = text[7:].strip() if text.startswith("/model ") else ""
+            if not name:
+                output.append(f"Current model: {state['model']}\n\n")
+            else:
+                try:
+                    installed = client.list_models()
+                    if name not in installed:
+                        output.append(f"Warning: '{name}' not found.\n")
+                        if installed:
+                            output.append(f"Installed: {', '.join(installed)}\n\n")
+                    else:
+                        state["model"] = name
+                        output.append(f"Switched to: {name}\n\n")
+                except Exception as e:
+                    output.append(f"Error listing models: {e}\n\n")
+            return True
+
+        if text == "/setmodel" or text.startswith("/setmodel "):
+            name = text[10:].strip() if text.startswith("/setmodel ") else ""
+            if not name:
+                output.append("Usage: /setmodel <name>\n\n")
+            else:
+                try:
+                    installed = client.list_models()
+                    if name not in installed:
+                        output.append(
+                            f"Warning: '{name}' not found. config.json は変更されません。\n\n"
+                        )
+                        if installed:
+                            output.append(f"Installed: {', '.join(installed)}\n\n")
+                    else:
+                        state["model"] = name
+                        _save_config({
+                            "model": name,
+                            "think_mode": state["think_mode"],
+                            "logging_enabled": state["logging_enabled"],
+                        })
+                        output.append(f"Switched to: {name} (saved to config.json)\n\n")
+                except Exception as e:
+                    output.append(f"Error: {e}\n\n")
+            return True
+
+        if text == "/think" or text.startswith("/think "):
+            arg = text[7:].strip() if text.startswith("/think ") else ""
+            if not arg:
+                idx = THINK_MODES.index(state["think_mode"])
+                new_mode = THINK_MODES[(idx + 1) % len(THINK_MODES)]
+            elif arg in THINK_MODES:
+                new_mode = arg
+            else:
+                output.append(f"ERROR: invalid think mode '{arg}'. Use: show | hide | off\n\n")
+                return True
+            old_mode = state["think_mode"]
+            state["think_mode"] = new_mode
+            _save_config({
+                "model": state["model"],
+                "think_mode": new_mode,
+                "logging_enabled": state["logging_enabled"],
+            })
+            session_log.update_context(think_mode=new_mode)
+            output.append(f"Think mode: {new_mode.upper()} (was {old_mode.upper()})\n\n")
+            return True
+
+        if text == "/logging" or text.startswith("/logging "):
+            arg = text[9:].strip() if text.startswith("/logging ") else ""
+            if arg == "on":
+                enabled = session_log.set_enabled(True)
+            elif arg == "off":
+                enabled = session_log.set_enabled(False)
+            elif arg == "status":
+                enabled = session_log.enabled
+            elif not arg:
+                enabled = session_log.toggle()
+            else:
+                output.append(f"ERROR: invalid logging arg '{arg}'. Use: on | off | status\n\n")
+                return True
+            state["logging_enabled"] = enabled
+            status_str = "ON" if enabled else "OFF"
+            if enabled and session_log.file_path:
+                output.append(f"ログ収集: {status_str} ({session_log.file_path})\n\n")
+            else:
+                output.append(f"ログ収集: {status_str}\n\n")
+            return True
+
+        return False
+
+    # ---- チャット実行 ----
+    def _do_chat(text: str, app: Application) -> None:
+        approval_fn = _make_approval_fn(app)
+        try:
+            chat_turn(
+                output=output,
+                state=state,
+                app=app,
+                messages=messages,
+                user_input=text,
+                model=state["model"],
+                client=client,
+                plan_mode=state["plan_mode"],
+                think_mode=state["think_mode"],
+                allowed_write_paths=allowed_write_paths,
+                allowed_bash_commands=allowed_bash_commands,
+                session_log=session_log,
+                approval_fn=approval_fn,
+                harness_mode=harness_mode,
+                auto_compact=auto_compact,
+                compact_threshold=compact_threshold,
+                compact_recent_turns=compact_recent_turns,
+                reflexion_max_chars=reflexion_max_chars,
+            )
+        except Exception as e:
+            output.append(f"\n[ERROR] {type(e).__name__}: {e}\n\n")
+        finally:
+            state["is_busy"] = False
+            app.invalidate()
+
+    # ---- Layout パーツ ----
+
+    # 出力エリア: FormattedTextControl でスタイル付き描画
+    output_window = Window(
+        content=FormattedTextControl(output.get_formatted_text, focusable=False),
+        wrap_lines=True,
+        height=D(weight=1),
+    )
+    output.window = output_window  # auto_scroll 用に参照を渡す
+
+    # 承認 Dialog コンテナ (is_active=True の時だけ表示)
+    approval_container = approval.make_container()
+
+    # 入力エリア: 上ライン + 入力行 + 下ライン
+    input_area = HSplit([
+        Window(height=1, char="─", style="class:separator"),
+        Window(
+            content=BufferControl(buffer=input_buf, focusable=True),
+            height=1,
+            style="class:input",
+        ),
+        Window(height=1, char="─", style="class:separator"),
+    ])
+
+    # 承認中 or コピーモード中は入力エリアを非表示
+    conditional_input = ConditionalContainer(
+        content=input_area,
+        filter=Condition(lambda: not approval.is_active and not copy_mode.is_active),
+    )
+
+    status_window = Window(
+        content=FormattedTextControl(get_status),
+        height=1,
+        style="class:status",
+    )
+
+    layout = Layout(
+        HSplit([
+            output_window,
+            approval_container,
+            conditional_input,
+            status_window,
+        ]),
+        focused_element=input_buf,
+    )
+
+    # ---- KeyBindings ----
+    kb = KeyBindings()
+    not_approval = Condition(lambda: not approval.is_active)
+
+    @kb.add("enter", filter=not_approval)
+    def _on_enter(event):
+        if state["is_busy"]:
+            return
+        text = input_buf.text.strip()
+        if not text:
+            return
+        input_buf.append_to_history()
+        input_buf.reset()
+        # Enter 送信で末尾に戻す
+        output.auto_scroll = True
+        output_window.vertical_scroll = 999999
+
+        if handle_command(text):
+            return
+
+        state["is_busy"] = True
+        t = threading.Thread(target=_do_chat, args=(text, event.app), daemon=True)
+        t.start()
+
+    @kb.add("c-c")
+    @kb.add("c-d")
+    def _on_exit(event):
+        session_log.close("ctrl_c")
+        prog.clear()
+        event.app.exit()
+
+    @kb.add("c-l")
+    def _on_clear(event):
+        output.clear()
+
+    @kb.add("up", filter=not_approval)
+    def _on_up(event):
+        input_buf.history_backward()
+
+    @kb.add("down", filter=not_approval)
+    def _on_down(event):
+        input_buf.history_forward()
+
+    # ---- スクロール KeyBindings ----
+
+    @kb.add("pageup", eager=True)
+    def _on_pageup(event):
+        output.auto_scroll = False
+        if output_window.render_info:
+            page_h = output_window.render_info.window_height
+            output_window.vertical_scroll = max(
+                0, output_window.vertical_scroll - page_h
+            )
+        event.app.invalidate()
+
+    @kb.add("pagedown", eager=True)
+    def _on_pagedown(event):
+        if output_window.render_info:
+            page_h = output_window.render_info.window_height
+            content_h = output_window.render_info.content_height
+            new_scroll = min(
+                max(0, content_h - page_h),
+                output_window.vertical_scroll + page_h,
+            )
+            output_window.vertical_scroll = new_scroll
+            # 末尾まで来たら auto_scroll を再有効化
+            if new_scroll >= max(0, content_h - page_h):
+                output.auto_scroll = True
+        event.app.invalidate()
+
+    @kb.add("home", eager=True)
+    def _on_home(event):
+        output.auto_scroll = False
+        output_window.vertical_scroll = 0
+        event.app.invalidate()
+
+    @kb.add("end", eager=True)
+    def _on_end(event):
+        output.auto_scroll = True
+        output_window.vertical_scroll = 999999
+        event.app.invalidate()
+
+    @kb.add("c-y", eager=True)
+    def _enter_copy_mode(event):
+        """Ctrl+Y でコピーモードに入る。"""
+        if not copy_mode.is_active and not approval.is_active:
+            copy_mode.enter(output.get_plain_lines())
+            event.app.invalidate()
+
+    # 承認 Dialog + コピーモードの KeyBindings をマージ
+    merged_kb = merge_key_bindings([kb, approval.make_keybindings(), copy_mode.make_keybindings()])
+
+    # ---- Application ----
+    app = Application(
+        layout=layout,
+        key_bindings=merged_kb,
+        style=DARKCLAUDE_STYLE,
+        full_screen=True,
+        mouse_support=True,   # マウスホイールスクロール有効化
+    )
+    _app_ref[0] = app
+
+    # 終了時に必ずタスクバー進捗をクリア
+    atexit.register(prog.clear)
+
+    # ---- 初期表示 ----
+    output.append_fragments(list(render_banner(config)))
+    if session_log.enabled and session_log.file_path is not None:
+        output.append(f"[logging] Recording to {session_log.file_path}\n\n")
+    else:
+        output.append("[logging] Disabled\n\n")
+
+    # ---- 起動 ----
+    async def _run_async() -> None:
+        _loop_ref[0] = asyncio.get_running_loop()
+        await app.run_async()
+
+    try:
+        asyncio.run(_run_async())
+    except KeyboardInterrupt:
+        session_log.close("ctrl_c")
+        prog.clear()
+    except Exception:
+        session_log.close("error")
+        prog.clear()
+        raise
+
+=== approval.py ===
+"""承認 Dialog (prompt_toolkit ネイティブ実装、v0.9-beta)"""
+import asyncio
+
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout.containers import ConditionalContainer, Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+
+
+class ApprovalDialog:
+    """ツール承認用 in-TUI Dialog。questionary を置き換える。
+
+    使い方:
+        dialog = ApprovalDialog()
+        # Layout に dialog.make_container() を組み込む
+        # KeyBindings に dialog.make_keybindings() をマージする
+        # ツール承認時:
+        result_idx = await dialog.show(title, command, description, emphasis)
+        # 0=Yes(once), 1=Yes(always), 2=No
+    """
+
+    _OPTIONS = [
+        "Yes",
+        "Yes, and always allow access to {emphasis} from this project",
+        "No",
+    ]
+
+    def __init__(self) -> None:
+        self.is_active = False
+        self.section_title = ""
+        self.command_text = ""
+        self.description = ""
+        self.emphasis_text = ""
+        self.selected_index = 0
+        self._future: asyncio.Future | None = None
+
+    # ---- 公開 API ----
+
+    async def show(
+        self,
+        section_title: str,
+        command_text: str,
+        description: str = "",
+        emphasis: str = "",
+    ) -> int:
+        """Dialog を表示し、選択結果 (0/1/2) を返す。"""
+        self.section_title = section_title
+        self.command_text = command_text
+        self.description = description
+        self.emphasis_text = emphasis
+        self.selected_index = 0
+        self.is_active = True
+        loop = asyncio.get_event_loop()
+        self._future = loop.create_future()
+        return await self._future
+
+    # ---- Layout / KeyBindings ----
+
+    def make_container(self) -> ConditionalContainer:
+        return ConditionalContainer(
+            content=Window(
+                FormattedTextControl(self._get_content),
+                wrap_lines=False,
+            ),
+            filter=Condition(lambda: self.is_active),
+        )
+
+    def make_keybindings(self) -> KeyBindings:
+        kb = KeyBindings()
+        active = Condition(lambda: self.is_active)
+
+        @kb.add("up", filter=active)
+        def _up(event):
+            self.selected_index = max(0, self.selected_index - 1)
+            event.app.invalidate()
+
+        @kb.add("down", filter=active)
+        def _down(event):
+            self.selected_index = min(len(self._OPTIONS) - 1, self.selected_index + 1)
+            event.app.invalidate()
+
+        @kb.add("enter", filter=active)
+        def _enter(event):
+            self._resolve(self.selected_index)
+            event.app.invalidate()
+
+        @kb.add("1", filter=active)
+        def _key1(event):
+            self._resolve(0)
+            event.app.invalidate()
+
+        @kb.add("2", filter=active)
+        def _key2(event):
+            self._resolve(1)
+            event.app.invalidate()
+
+        @kb.add("3", filter=active)
+        def _key3(event):
+            self._resolve(2)
+            event.app.invalidate()
+
+        @kb.add("escape", filter=active)
+        def _esc(event):
+            self._resolve(2)  # No 扱い
+            event.app.invalidate()
+
+        return kb
+
+    # ---- 内部 ----
+
+    def _resolve(self, index: int) -> None:
+        self.is_active = False
+        if self._future and not self._future.done():
+            self._future.set_result(index)
+
+    def _get_content(self) -> FormattedText:
+        if not self.is_active:
+            return FormattedText([])
+
+        width = 80
+        parts: list[tuple[str, str]] = []
+
+        # 上ライン
+        parts.append(("class:section.divider", "─" * width + "\n"))
+        # セクションヘッダー
+        parts.append(("class:section.header", f" {self.section_title}\n\n"))
+        # コマンド本文 (コードブロック背景)
+        for line in self.command_text.split("\n"):
+            parts.append(("class:code_block", line.ljust(width) + "\n"))
+        # 説明文
+        if self.description:
+            parts.append(("class:section.subhead", f"  {self.description}\n"))
+        parts.append(("", "\n"))
+        # 質問
+        parts.append(("class:assistant", " Do you want to proceed?\n"))
+        # 選択肢
+        for i, opt_tmpl in enumerate(self._OPTIONS):
+            is_sel = (i == self.selected_index)
+            cursor = ("class:option.cursor", "> ") if is_sel else ("", "  ")
+            opt_style = "class:option.selected" if is_sel else "class:option.unselected"
+            parts.append(cursor)
+            label = f"{i + 1}. "
+            if i == 1 and self.emphasis_text:
+                before, _, after = opt_tmpl.partition("{emphasis}")
+                parts += [
+                    (opt_style, label + before),
+                    ("class:option.emphasis", self.emphasis_text),
+                    (opt_style, after + "\n"),
+                ]
+            else:
+                parts.append((opt_style, label + opt_tmpl + "\n"))
+
+        parts.append(("", "\n"))
+        # 下ライン
+        parts.append(("class:section.divider", "─" * width + "\n"))
+        # ヒント
+        parts.append(("class:option.hint", " Esc to cancel  ·  1/2/3 to select directly\n"))
+
+        return FormattedText(parts)
+
+
+def decision_from_index(index: int) -> str:
+    """選択肢インデックスを approval_fn の戻り値文字列に変換する。"""
+    if index == 0:
+        return "allow_once"
+    elif index == 1:
+        return "always_allow"
+    else:
+        return "deny"
+
+=== banner.py ===
+"""ASCII banner + DarkClaude mascot (v0.9-beta)"""
+import os
+from prompt_toolkit.formatted_text import FormattedText
+
+BANNER = r""" ██████╗  █████╗ ██████╗ ██╗  ██╗ ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+ ██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+ ██║  ██║███████║██████╔╝█████╔╝ ██║     ██║     ███████║██║   ██║██║  ██║█████╗
+ ██║  ██║██╔══██║██╔══██╗██╔═██╗ ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
+ ██████╔╝██║  ██║██║  ██║██║  ██╗╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝"""
+
+MASCOT = r"""   █        █
+   ██      ██
+  ██▀██████▀██
+    ██▄ ████ ▄██
+  ████████████████
+  ████████████
+   █ █    █ █   """
+
+GAP = "  "  # banner と mascot の間隔
+
+VERSION = "v0.9-beta"
+
+
+def render_banner(config: dict) -> FormattedText:
+    """banner + mascot を横並びにした FormattedText を返す。
+
+    レイアウト (A 配置 = mascot の角先端が banner より 1 行上に突出):
+      行 0:   [banner 幅の空白] + GAP + MASCOT 行 0  (角先端のみ)
+      行 1-6: BANNER 行 i + GAP + MASCOT 行 i+1
+    """
+    banner_lines = BANNER.split("\n")
+    mascot_lines = MASCOT.split("\n")
+
+    assert len(banner_lines) == 6, f"banner must be 6 lines, got {len(banner_lines)}"
+    assert len(mascot_lines) == 7, f"mascot must be 7 lines, got {len(mascot_lines)}"
+
+    banner_width = max(len(line) for line in banner_lines)
+
+    parts: list[tuple[str, str]] = []
+
+    # 行 0: banner なし、mascot の最初の行 (角の先端)
+    parts.append(("", " " * banner_width))
+    parts.append(("", GAP))
+    parts.append(("class:mascot", mascot_lines[0]))
+    parts.append(("", "\n"))
+
+    # 行 1-6: banner + mascot
+    for i in range(6):
+        parts.append(("class:banner", banner_lines[i]))
+        parts.append(("", GAP))
+        parts.append(("class:mascot", mascot_lines[i + 1]))
+        parts.append(("", "\n"))
+
+    # 情報行
+    model = config.get("model", "?")
+    base_url = config.get("base_url", "http://localhost:8080")
+    phase = "A6 stabilization"
+    cwd = os.getcwd()
+
+    parts.append(("", "\n"))
+    parts += [
+        ("class:muted", " version    "), ("class:info.version", VERSION), ("", "\n"),
+        ("class:muted", " model      "), ("class:info.value", model), ("", "\n"),
+        ("class:muted", " server     "), ("class:info.value", base_url), ("", "\n"),
+        ("class:muted", " cwd        "), ("class:output", cwd), ("", "\n"),
+        ("class:muted", " phase      "), ("class:phase", phase), ("", "\n"),
+    ]
+
+    # Harness ステータス
+    harness_mode = config.get("harness_mode", "claude_compat")
+    harness_label = "darkclaude-native" if harness_mode == "darkclaude_native" else "claude-compat"
+    parts += [
+        ("class:muted", " harness    "), ("class:phase", harness_label), ("", "\n"),
+    ]
+    if harness_mode == "darkclaude_native":
+        auto_compact = config.get("auto_compaction", False)
+        components = "DARKCLAUDE.md + Reflexion"
+        if auto_compact:
+            components += " + Auto-Compact"
+        parts += [
+            ("class:muted", "            "), ("class:info.value", components), ("", "\n"),
+        ]
+
+    parts += [
+        ("", "\n"),
+        ("class:muted", " Type /help for commands.  Ctrl+C to exit."), ("", "\n"),
+        ("", "\n"),
+    ]
+
+    return FormattedText(parts)
+
+=== chat.py ===
+"""チャットターン処理 — スタイル付き OutputBuffer を使った TUI 版 (v0.9-beta)。"""
+import collections
+import difflib
+import json
+import random
+import re
+import threading
+import time
+from typing import Callable
+
+from tools.registry import TOOL_SCHEMAS, dispatch
+from session_log import SessionLog
+from prompts import (
+    SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT,
+    DARKCLAUDE_NATIVE_SYSTEM_PROMPT,
+    load_darkclaude_md_instructions, load_claude_md_instructions,
+)
+from .output import OutputBuffer
+from . import progress as prog
+
+_THINKING_VERBS = [
+    "Thinking", "Cooking", "Brewing", "Cogitating",
+    "Crunching", "Pondering", "Simmering",
+    "思考中", "考え中", "推論中", "解析中", "演算中", "思索中", "分析中",
+]
+
+
+# ---- テキスト処理 ----
+
+class ThinkStripper:
+    """Strip <think>...</think> blocks from a stream of text chunks."""
+
+    def __init__(self) -> None:
+        self.in_think = False
+        self.buffer = ""
+
+    def feed(self, chunk: str) -> str:
+        self.buffer += chunk
+        out: list[str] = []
+        while self.buffer:
+            if self.in_think:
+                end = self.buffer.find("</think>")
+                if end == -1:
+                    keep = min(len(self.buffer), 7)
+                    self.buffer = self.buffer[-keep:] if keep else ""
+                    return "".join(out)
+                self.buffer = self.buffer[end + len("</think>"):]
+                self.in_think = False
+            else:
+                start = self.buffer.find("<think>")
+                if start == -1:
+                    keep = min(len(self.buffer), 6)
+                    out.append(self.buffer[:-keep] if keep else self.buffer)
+                    self.buffer = self.buffer[-keep:] if keep else ""
+                    return "".join(out)
+                out.append(self.buffer[:start])
+                self.buffer = self.buffer[start + len("<think>"):]
+                self.in_think = True
+        return "".join(out)
+
+    def flush(self) -> str:
+        if self.in_think:
+            return ""
+        out = self.buffer
+        self.buffer = ""
+        return out
+
+
+# ---- TUI インジケーター ----
+
+class TUIThinkingIndicator:
+    """思考中インジケーター: ステータスラインにカウントアップ表示。"""
+
+    def __init__(self, output: OutputBuffer, state: dict, app) -> None:
+        self._output = output
+        self._state = state
+        self._app = app
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._verb = ""
+        self._start = 0.0
+
+    def _run(self) -> None:
+        while not self._stop.wait(1.0):
+            elapsed = int(time.monotonic() - self._start)
+            self._state["thinking"] = f"✻ {self._verb} {elapsed}s"
+            if self._app:
+                self._app.invalidate()
+
+    def __enter__(self) -> "TUIThinkingIndicator":
+        self._verb = random.choice(_THINKING_VERBS)
+        self._start = time.monotonic()
+        self._state["thinking"] = f"✻ {self._verb} 0s"
+        self._stop.clear()
+        self._output.append_fragments([("class:thinking", f"✻ {self._verb}...\n")])
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+        self._state["thinking"] = ""
+        if self._app:
+            self._app.invalidate()
+
+
+# ---- フォーマット関数 ----
+
+def _get_term_width(app) -> int:
+    try:
+        if app:
+            return app.output.get_size().columns
+    except Exception:
+        pass
+    return 80
+
+
+def render_user_echo(user_input: str, app) -> list[tuple[str, str]]:
+    """ユーザー入力を ▸ <text> 形式、薄背景付きで描画するフラグメントを返す。"""
+    width = _get_term_width(app)
+    prefix = "▸ "
+    text_len = len(prefix) + len(user_input)
+    pad = max(0, width - text_len - 2)  # 左右 1 文字ずつマージン
+    return [
+        ("class:user.line", " "),
+        ("class:prompt class:user.line", "▸ "),
+        ("class:user.text class:user.line", user_input),
+        ("class:user.line", " " * pad),
+        ("", "\n"),
+    ]
+
+
+def render_assistant_text(text: str, app) -> list[tuple[str, str]]:
+    """アシスタント応答テキストを行単位でスタイル付きフラグメントにする。
+
+    ` ``` ` で囲まれたコードブロックは bg:#1a1a1a 背景で描画する。
+    """
+    width = _get_term_width(app)
+    fragments: list[tuple[str, str]] = []
+    in_code_block = False
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            # コードブロック区切り
+            border = ("class:code_block.border", "─" * width + "\n")
+            fragments.append(border)
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            fragments.append(("class:code_block", line.ljust(width)))
+            fragments.append(("", "\n"))
+        else:
+            fragments.append(("class:assistant", line))
+            fragments.append(("", "\n"))
+
+    return fragments
+
+
+def render_diff(
+    old_text: str,
+    new_text: str,
+    n_context: int = 1,
+    width: int = 80,
+) -> list[tuple[str, str]]:
+    """unified diff を Claude Code 風スタイルのフラグメントで返す。"""
+    diff = list(difflib.unified_diff(
+        old_text.splitlines(keepends=False),
+        new_text.splitlines(keepends=False),
+        n=n_context,
+        lineterm="",
+    ))
+
+    added_count = sum(1 for l in diff if l.startswith("+") and not l.startswith("+++"))
+    removed_count = sum(1 for l in diff if l.startswith("-") and not l.startswith("---"))
+
+    parts: list[tuple[str, str]] = [
+        ("class:diff.summary",
+         f"  ⎿ Added {added_count} line(s), removed {removed_count} line(s)\n"),
+    ]
+
+    line_num_old = 0
+    line_num_new = 0
+    col_w = width - 7  # 行番号 + マーカー分を引く
+
+    for line in diff:
+        if line.startswith("@@"):
+            m = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
+            if m:
+                line_num_old = int(m.group(1))
+                line_num_new = int(m.group(2))
+            continue
+        if line.startswith("---") or line.startswith("+++"):
+            continue
+        if line.startswith("-"):
+            parts += [
+                ("class:diff.line_number", f"{line_num_old:4d} "),
+                ("class:diff.marker.minus", "- "),
+                ("class:diff.removed", line[1:].ljust(col_w) + "\n"),
+            ]
+            line_num_old += 1
+        elif line.startswith("+"):
+            parts += [
+                ("class:diff.line_number", f"{line_num_new:4d} "),
+                ("class:diff.marker.plus", "+ "),
+                ("class:diff.added", line[1:].ljust(col_w) + "\n"),
+            ]
+            line_num_new += 1
+        else:
+            content = line[1:] if line.startswith(" ") else line
+            parts += [
+                ("class:diff.line_number", f"{line_num_old:4d} "),
+                ("", "  "),
+                ("class:diff.context", content + "\n"),
+            ]
+            line_num_old += 1
+            line_num_new += 1
+
+    return parts
+
+
+def _fmt_tool_call(name: str, args: dict) -> list[tuple[str, str]]:
+    """⏺ ToolName(arg) フォーマット (class:tool.call)。"""
+    for key in ("path", "command", "pattern", "query"):
+        if key in args:
+            val = str(args[key]).replace("\n", "↵")
+            if len(val) > 47:
+                val = val[:47] + "..."
+            return [("class:tool.call", f"⏺ {name}({val})\n")]
+    if args:
+        first_val = str(next(iter(args.values()))).replace("\n", "↵")
+        if len(first_val) > 47:
+            first_val = first_val[:47] + "..."
+        return [("class:tool.call", f"⏺ {name}({first_val})\n")]
+    return [("class:tool.call", f"⏺ {name}()\n")]
+
+
+def _fmt_tool_result(result: str, is_error: bool = False) -> list[tuple[str, str]]:
+    """  ⎿ <要約> フォーマット。"""
+    summary = result.replace("\n", " ").strip()
+    if len(summary) > 100:
+        summary = summary[:100] + "..."
+    style = "class:tool.result.error" if is_error else "class:tool.result.ok"
+    return [
+        ("class:tool.result", "  ⎿ "),
+        (style, summary + "\n"),
+    ]
+
+
+# ---- システムプロンプト ----
+
+def build_system_prompt(
+    plan_mode: bool,
+    think_mode: str,
+    harness_mode: str = "claude_compat",
+    reflexion_max_chars: int = 4000,
+) -> str:
+    if harness_mode == "darkclaude_native":
+        darkclaude_md = load_darkclaude_md_instructions()
+        from tools.reflexion import load_reflexion
+        reflexion = load_reflexion()
+        if len(reflexion) > reflexion_max_chars:
+            reflexion = "...(古い記録は省略)...\n\n" + reflexion[-reflexion_max_chars:]
+        content = DARKCLAUDE_NATIVE_SYSTEM_PROMPT.format(
+            darkclaude_md_content=darkclaude_md or "(なし)",
+            reflexion_content=reflexion or "(なし)",
+        )
+        if plan_mode:
+            content = PLAN_SYSTEM_PROMPT + "\n\n" + content
+    else:
+        content = SYSTEM_PROMPT
+        if plan_mode:
+            content = PLAN_SYSTEM_PROMPT + "\n\n" + content
+        claude_md = load_claude_md_instructions()
+        if claude_md:
+            content += f"\n\n## Project-specific instructions\n\n{claude_md}"
+
+    if think_mode == "off":
+        content += "\n\n/no_think"
+    return content
+
+
+def _to_dict(obj) -> dict:
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    try:
+        return vars(obj)
+    except TypeError:
+        return {"raw_repr": str(obj)}
+
+
+# ---- diff 用 write/str_replace キャプチャ ----
+
+def _try_read_file(path: str) -> str | None:
+    """diff 用に編集前ファイルの内容を読む。失敗したら None を返す。"""
+    try:
+        from pathlib import Path
+        return Path(path).read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+
+# ---- メインのチャットターン ----
+
+def chat_turn(
+    output: OutputBuffer,
+    state: dict,
+    app,
+    messages: list,
+    user_input: str,
+    model: str,
+    client,
+    plan_mode: bool = False,
+    think_mode: str = "show",
+    allowed_write_paths: set | None = None,
+    allowed_bash_commands: set | None = None,
+    session_log: SessionLog | None = None,
+    approval_fn: Callable | None = None,
+    harness_mode: str = "claude_compat",
+    auto_compact: bool = False,
+    compact_threshold: float = 0.7,
+    compact_recent_turns: int = 5,
+    reflexion_max_chars: int = 4000,
+) -> None:
+    """1 ターン分の処理（ユーザー入力 → ツールループ → アシスタント応答）。"""
+
+    # ユーザー入力エコー (薄背景 + 灰色テキスト)
+    output.append_fragments(render_user_echo(user_input, app))
+    output.append("\n")
+
+    messages.append({"role": "user", "content": user_input})
+    if session_log:
+        session_log.user_message(user_input)
+
+    if allowed_write_paths is None:
+        allowed_write_paths = set()
+    if allowed_bash_commands is None:
+        allowed_bash_commands = set()
+    if approval_fn is None:
+        from tools.approval import request_approval
+        approval_fn = request_approval
+
+    call_count = 0
+    recent_calls: collections.deque = collections.deque(maxlen=3)
+    turn_start = time.monotonic()
+
+    prog.working()
+    try:
+        while True:
+            # Auto-Compaction (E7 統合): 閾値超えなら LLM 要約で履歴を圧縮
+            if auto_compact:
+                from tools.compaction import should_compact, compact_history, save_compaction_log
+                if should_compact(messages, compact_threshold):
+                    _orig = list(messages)
+                    _compacted = compact_history(messages, client, model, compact_recent_turns)
+                    messages[:] = _compacted
+                    try:
+                        save_compaction_log(_orig, _compacted)
+                    except Exception:
+                        pass
+                    output.append_fragments([
+                        ("class:muted",
+                         f"  [auto-compaction] {len(_orig)} → {len(_compacted)} messages\n"),
+                    ])
+
+            send_messages = (
+                [{"role": "system", "content": build_system_prompt(
+                    plan_mode, think_mode, harness_mode, reflexion_max_chars
+                )}]
+                + messages
+            )
+            llm_start = time.monotonic()
+
+            with TUIThinkingIndicator(output, state, app):
+                response = client.chat(
+                    model=model,
+                    messages=send_messages,
+                    tools=TOOL_SCHEMAS,
+                    think=(think_mode == "off"),
+                )
+
+            msg = response["message"]
+            messages.append(msg)
+            if session_log:
+                session_log.llm_call(
+                    send_messages,
+                    _to_dict(msg),
+                    int((time.monotonic() - llm_start) * 1000),
+                )
+
+            tool_calls = msg.get("tool_calls")
+            if not tool_calls:
+                # テキスト応答 → ターン終了
+                content = msg.get("content", "")
+                if think_mode == "hide":
+                    stripper = ThinkStripper()
+                    content = stripper.feed(content) + stripper.flush()
+                if session_log:
+                    session_log.assistant_message(
+                        content, int((time.monotonic() - turn_start) * 1000)
+                    )
+                elapsed = time.monotonic() - turn_start
+                output.append("\n")
+                output.append_fragments(render_assistant_text(content, app))
+                output.append_fragments([
+                    ("class:muted", f"\n  (合計 {elapsed:.1f}s)\n\n"),
+                ])
+                prog.done()
+                return
+
+            # ツール呼び出しを順に実行
+            limit_reached = False
+            for call in tool_calls:
+                name = call["function"]["name"]
+                args = call["function"]["arguments"]
+
+                # ターン内上限チェック
+                call_count += 1
+                if call_count > 25:
+                    error_msg = (
+                        "ERROR: このターンの tool_call 回数が上限（25回）に達しました。"
+                        "タスクを分割するか、再度指示してください。"
+                    )
+                    output.append_fragments([
+                        ("class:tool.result.error", f"  ⏺ {name}(...) → 上限到達でブロック\n")
+                    ])
+                    messages.append({"role": "tool", "content": error_msg, "name": name})
+                    limit_reached = True
+                    break
+
+                # 連続同一呼び出し検出
+                call_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
+                if len(recent_calls) == 3 and all(k == call_key for k in recent_calls):
+                    error_msg = (
+                        "ERROR: 同じツール呼び出しが3回繰り返されました。"
+                        "引数を変えるか、別のアプローチを試してください。"
+                    )
+                    output.append_fragments([
+                        ("class:tool.result.error", f"  ⏺ {name}(...) → 連続同一呼び出しでブロック\n")
+                    ])
+                    messages.append({"role": "tool", "content": error_msg, "name": name})
+                    recent_calls.append(call_key)
+                    continue
+                recent_calls.append(call_key)
+
+                if session_log:
+                    session_log.tool_call(name, args)
+
+                # 承認ゲート
+                if not plan_mode and name in ("write_file", "bash", "str_replace"):
+                    if name in ("write_file", "str_replace"):
+                        key = args.get("path", "")
+                        allowed_set = allowed_write_paths
+                    else:
+                        key = args.get("command", "").strip()
+                        allowed_set = allowed_bash_commands
+
+                    if not key:
+                        output.append_fragments([
+                            ("class:tool.result.error",
+                             f"  ⏺ {name}({str(args)[:50]}) → invalid args\n")
+                        ])
+                        messages.append({
+                            "role": "tool",
+                            "content": "ERROR: ツールの引数が不正です（path または command が空）",
+                            "name": name,
+                        })
+                        continue
+
+                    if key not in allowed_set:
+                        decision = approval_fn(name, args)
+                        if session_log:
+                            session_log.approval(name, args, decision)
+                        if decision == "always_allow":
+                            allowed_set.add(key)
+                        elif decision == "deny":
+                            output.append_fragments([
+                                ("class:tool.result.error",
+                                 f"  ⏺ {name}({key[:50]}) → USER_DENIED\n")
+                            ])
+                            denied_msg = (
+                                "USER_DENIED: あなた（ユーザー）がこのツールの実行を拒否しました。"
+                                "ファイル権限などシステムの問題ではありません。"
+                                "別のアプローチを提案するか、何をしたいか確認してください。"
+                            )
+                            if session_log:
+                                session_log.tool_result(name, args, denied_msg, True)
+                            messages.append({
+                                "role": "tool",
+                                "content": denied_msg,
+                                "name": name,
+                            })
+                            continue
+
+                # diff 用: 編集前ファイル内容を読んでおく
+                pre_edit_content: str | None = None
+                if name in ("write_file", "str_replace"):
+                    pre_edit_content = _try_read_file(args.get("path", ""))
+
+                # ツール呼び出し表示
+                output.append_fragments(_fmt_tool_call(name, args))
+
+                tool_start = time.monotonic()
+                result = dispatch(name, args, plan_mode=plan_mode)
+                tool_elapsed = time.monotonic() - tool_start
+
+                if session_log:
+                    session_log.tool_result(name, args, result, False)
+
+                is_error = result.startswith("ERROR:")
+
+                # diff 表示 (write_file / str_replace 成功時)
+                if not is_error and name in ("write_file", "str_replace") and pre_edit_content is not None:
+                    new_content: str | None = None
+                    if name == "write_file":
+                        new_content = args.get("content", "")
+                    elif name == "str_replace":
+                        new_content = pre_edit_content.replace(
+                            args.get("old_str", ""), args.get("new_str", ""), 1
+                        )
+                    if new_content is not None:
+                        diff_frags = render_diff(pre_edit_content, new_content, width=_get_term_width(app))
+                        output.append_fragments(diff_frags)
+                else:
+                    output.append_fragments(_fmt_tool_result(result, is_error))
+
+                output.append_fragments([
+                    ("class:muted", f"  ({tool_elapsed:.1f}s)\n"),
+                ])
+
+                messages.append({
+                    "role": "tool",
+                    "content": result,
+                    "name": name,
+                })
+
+            if limit_reached:
+                output.append_fragments([
+                    ("class:tool.result.error",
+                     "\n[安全機構] ターン内 tool_call 上限（25回）に達しました。"
+                     "処理を中断します。\n\n")
+                ])
+                prog.error()
+                return
+
+    except Exception:
+        prog.error()
+        raise
+
+=== copy_mode.py ===
+"""アプリ内コピーモード (tmux 風 / OSC 52 クリップボード)"""
+import sys
+from base64 import b64encode
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.filters import Condition
+
+
+class CopyMode:
+    """Ctrl+Y でコピーモードに入り、矢印+v で範囲選択 → y/Enter でコピー。
+
+    マウスホイールスクロール (mouse_support=True) を維持しつつ
+    テキスト選択 → クリップボードコピーを可能にする。
+    visual cursor のハイライトはステータスライン経由でフィードバック。
+    """
+
+    def __init__(self) -> None:
+        self.is_active = False
+        self.cursor_row = 0
+        self.cursor_col = 0
+        self.selection_start: tuple[int, int] | None = None
+        self.output_lines: list[str] = []
+
+    def enter(self, output_lines: list[str]) -> None:
+        self.is_active = True
+        self.output_lines = output_lines
+        self.cursor_row = max(0, len(output_lines) - 1)
+        self.cursor_col = 0
+        self.selection_start = None
+
+    def exit(self) -> None:
+        self.is_active = False
+        self.selection_start = None
+
+    def get_status_hint(self) -> str:
+        """ステータスラインに表示するコピーモード情報を返す。"""
+        n = len(self.output_lines)
+        row_info = f"L{self.cursor_row + 1}/{n}" if n else "L0"
+        if self.selection_start is not None:
+            sr, sc = self.selection_start
+            return f"[COPY] {row_info} col:{self.cursor_col}  sel from L{sr+1}  y/Enter=copy  Esc=cancel"
+        return f"[COPY] {row_info} col:{self.cursor_col}  v=select  y=copy  Esc=cancel"
+
+    def get_selected_text(self) -> str:
+        if self.selection_start is None:
+            # 選択なし: カーソル行を返す
+            if 0 <= self.cursor_row < len(self.output_lines):
+                return self.output_lines[self.cursor_row]
+            return ""
+
+        sr, sc = self.selection_start
+        er, ec = self.cursor_row, self.cursor_col
+
+        # 順序を正規化
+        if (sr, sc) > (er, ec):
+            sr, sc, er, ec = er, ec, sr, sc
+
+        lines = self.output_lines
+        if sr >= len(lines):
+            return ""
+
+        if sr == er:
+            return lines[sr][sc : ec + 1]
+
+        parts = [lines[sr][sc:] if sr < len(lines) else ""]
+        for row in range(sr + 1, er):
+            parts.append(lines[row] if row < len(lines) else "")
+        if er < len(lines):
+            parts.append(lines[er][: ec + 1])
+        return "\n".join(parts)
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """OSC 52 シーケンスでクリップボードへ書き込む (クロスプラットフォーム)。"""
+        if not text:
+            return
+        b64 = b64encode(text.encode("utf-8")).decode("ascii")
+        seq = f"\x1b]52;c;{b64}\x07"
+        try:
+            out = getattr(sys, "__stdout__", sys.stdout)
+            out.write(seq)
+            out.flush()
+        except Exception:
+            pass
+
+    def _move_cursor(self, dr: int, dc: int) -> None:
+        n = len(self.output_lines)
+        self.cursor_row = max(0, min(n - 1, self.cursor_row + dr))
+        if self.output_lines and 0 <= self.cursor_row < n:
+            max_col = max(0, len(self.output_lines[self.cursor_row]) - 1)
+            self.cursor_col = max(0, min(max_col, self.cursor_col + dc))
+
+    def make_keybindings(self) -> KeyBindings:
+        kb = KeyBindings()
+        active = Condition(lambda: self.is_active)
+
+        @kb.add("up", filter=active, eager=True)
+        def _(event):
+            self._move_cursor(-1, 0)
+            event.app.invalidate()
+
+        @kb.add("down", filter=active, eager=True)
+        def _(event):
+            self._move_cursor(1, 0)
+            event.app.invalidate()
+
+        @kb.add("left", filter=active, eager=True)
+        def _(event):
+            self._move_cursor(0, -1)
+            event.app.invalidate()
+
+        @kb.add("right", filter=active, eager=True)
+        def _(event):
+            self._move_cursor(0, 1)
+            event.app.invalidate()
+
+        @kb.add("s-up", filter=active, eager=True)
+        def _(event):
+            if self.selection_start is None:
+                self.selection_start = (self.cursor_row, self.cursor_col)
+            self._move_cursor(-1, 0)
+            event.app.invalidate()
+
+        @kb.add("s-down", filter=active, eager=True)
+        def _(event):
+            if self.selection_start is None:
+                self.selection_start = (self.cursor_row, self.cursor_col)
+            self._move_cursor(1, 0)
+            event.app.invalidate()
+
+        @kb.add("s-left", filter=active, eager=True)
+        def _(event):
+            if self.selection_start is None:
+                self.selection_start = (self.cursor_row, self.cursor_col)
+            self._move_cursor(0, -1)
+            event.app.invalidate()
+
+        @kb.add("s-right", filter=active, eager=True)
+        def _(event):
+            if self.selection_start is None:
+                self.selection_start = (self.cursor_row, self.cursor_col)
+            self._move_cursor(0, 1)
+            event.app.invalidate()
+
+        @kb.add("v", filter=active, eager=True)
+        def _(event):
+            if self.selection_start is None:
+                self.selection_start = (self.cursor_row, self.cursor_col)
+            else:
+                self.selection_start = None
+            event.app.invalidate()
+
+        @kb.add("enter", filter=active, eager=True)
+        @kb.add("y", filter=active, eager=True)
+        def _(event):
+            text = self.get_selected_text()
+            if text:
+                self.copy_to_clipboard(text)
+            self.exit()
+            event.app.invalidate()
+
+        @kb.add("escape", filter=active, eager=True)
+        @kb.add("q", filter=active, eager=True)
+        def _(event):
+            self.exit()
+            event.app.invalidate()
+
+        return kb
+
+=== output.py ===
+"""OutputBuffer — FormattedText フラグメントを蓄積してスタイル付き出力を実現する。"""
+import threading
+from prompt_toolkit.formatted_text import FormattedText
+
+
+class OutputBuffer:
+    """スレッドセーフなスタイル付き出力バッファ。
+
+    FormattedTextControl のコールバック (get_formatted_text) から参照される。
+    Window への参照を持ち、append/clear 時に自動スクロールを制御する。
+    """
+
+    def __init__(self) -> None:
+        self._fragments: list[tuple[str, str]] = []
+        self._lock = threading.Lock()
+        self.window = None    # app.py で Window 生成後に設定
+        self.auto_scroll = True
+
+    # ---- 読み出し (UI スレッドから呼ばれる) ----
+
+    def get_formatted_text(self) -> FormattedText:
+        with self._lock:
+            return FormattedText(list(self._fragments))
+
+    # ---- 書き込み (background thread からも呼ばれる) ----
+
+    def append(self, text: str) -> None:
+        """プレーンテキストを class:output スタイルで追加する。"""
+        with self._lock:
+            self._fragments.append(("class:output", text))
+        self._try_scroll()
+
+    def append_fragments(self, fragments: list[tuple[str, str]]) -> None:
+        """スタイル付きフラグメントリストをそのまま追加する。"""
+        with self._lock:
+            self._fragments.extend(fragments)
+        self._try_scroll()
+
+    def clear(self) -> None:
+        with self._lock:
+            self._fragments.clear()
+        if self.window is not None:
+            self.window.vertical_scroll = 0
+
+    # ---- 内部 ----
+
+    def get_plain_lines(self) -> list[str]:
+        """コピーモード用: プレーンテキストを行リストで返す。"""
+        with self._lock:
+            text = "".join(t for _, t in self._fragments)
+        return text.split("\n")
+
+    def _try_scroll(self) -> None:
+        """auto_scroll が有効なら出力末尾にジャンプする。"""
+        if self.auto_scroll and self.window is not None:
+            self.window.vertical_scroll = 999999
+
+=== progress.py ===
+"""進捗インジケータ — OSC 9;4 (ターミナルタブ) + ITaskbarList3 (タスクバーアイコン) の両対応。"""
+import sys
+from . import taskbar
+
+
+def _osc94(state: int, value: int = 0) -> None:
+    """OSC 9;4 でターミナルタブに進捗を表示する。
+
+    prompt_toolkit の full_screen モードでは sys.stdout がバッファされるため
+    sys.__stdout__ を使って実ターミナルに直接書き込む。
+    """
+    seq = f"\x1b]9;4;{state};{value}\x07"
+    try:
+        out = getattr(sys, "__stdout__", None) or sys.stdout
+        out.write(seq)
+        out.flush()
+    except Exception:
+        try:
+            sys.stdout.write(seq)
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+
+def working() -> None:
+    """作業中: タブ (橙 indeterminate) + タスクバーアイコン (橙)。"""
+    _osc94(3)
+    taskbar.working()
+
+
+def done() -> None:
+    """完了: タブ (緑 100%) + タスクバーアイコン (緑)。"""
+    _osc94(1, 100)
+    taskbar.done()
+
+
+def error() -> None:
+    """エラー: タブ (赤) + タスクバーアイコン (赤)。"""
+    _osc94(2, 100)
+    taskbar.error()
+
+
+def clear() -> None:
+    """通常状態に戻す。"""
+    _osc94(0, 0)
+    taskbar.clear()
+
+=== status.py ===
+import time
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.application.current import get_app
+
+
+def make_status_fn(state: dict, start_time: float, copy_mode=None):
+    """ステータスライン用の get_status() クロージャを生成して返す。"""
+
+    def get_status() -> FormattedText:
+        elapsed = int(time.time() - start_time)
+        mins = elapsed // 60
+        secs = elapsed % 60
+
+        model = state.get("model", "?")
+        phase = "A6 stabilization"
+        thinking = state.get("thinking", "")
+
+        try:
+            width = get_app().output.get_size().columns
+        except Exception:
+            width = 80
+
+        right_text = f"⏱ {mins}m {secs:02d}s "
+
+        # コピーモード中はモード情報を前面に出す
+        if copy_mode is not None and copy_mode.is_active:
+            hint = copy_mode.get_status_hint()
+            left_parts: list[tuple[str, str]] = [
+                ("class:copy_mode.cursor", hint),
+            ]
+        else:
+            left_parts = [
+                ("class:status.value", f" {model}"),
+                ("class:status", " · "),
+                ("class:status.mode", f"Phase {phase}"),
+                ("class:muted", "  ·  Ctrl+Y: copy mode"),
+            ]
+            if thinking:
+                left_parts += [
+                    ("class:status", " · "),
+                    ("class:thinking", thinking),
+                ]
+
+        # 左右の文字数を概算してパディング
+        left_len = sum(len(t) for _, t in left_parts)
+        right_len = len(right_text)
+        pad = max(1, width - left_len - right_len)
+
+        return FormattedText(
+            left_parts
+            + [("class:status", " " * pad)]
+            + [("class:status", "⏱ ")]
+            + [("class:status.value", f"{mins}m {secs:02d}s ")]
+        )
+
+    return get_status
+
+=== style.py ===
+"""DarkClaude TUI 配色定義 (v0.9-beta 最終確定版)"""
+from prompt_toolkit.styles import Style
+
+DARKCLAUDE_STYLE = Style.from_dict({
+    # === 構造 (gray) ===
+    "frame.border":         "#5a5a5a",
+    "frame.border.sub":     "#3a3a3a",
+    "banner":               "#2a2a2a bold",
+    "mascot":               "#2a2a2a bold",    # banner と同色 (一体化)
+    "muted":                "#6a6a6a",
+    "separator":            "#3a3a3a",
+
+    # === 本文 (白/グレー基本) ===
+    "output":               "#e0e0e0",
+    "assistant":            "#e0e0e0",
+    "inline_code":          "#e0e0e0",
+    "code_block":           "bg:#1a1a1a #e0e0e0",
+    "code_block.border":    "#3a3a3a",
+    "user.line":            "bg:#1a1a1a",      # ユーザー入力 echo 行の薄背景
+
+    # === ユーザー ===
+    "prompt":               "#ffffff bold",
+    "user.text":            "#7a7a7a",          # 灰色 echo (本家準拠)
+    "cursor":               "bg:#ffffff #000000",
+
+    # === ツール (teal、本家の青/緑両方を吸収) ===
+    "tool.call":            "#5a8a98",
+    "tool.result":          "#7a7a7a",
+    "tool.result.ok":       "#5a8a98",
+    "tool.result.error":    "#a85050",          # 赤抑え
+    "tool.success.bullet":  "#5a8a98",
+
+    # === セクションヘッダー (薄紫、本家青の置換) ===
+    "section.header":       "#b095d5 bold",
+    "section.subhead":      "#7a7a7a",
+    "section.divider":      "#b095d5",          # 上下ラインも薄紫
+
+    # === 承認ダイアログ ===
+    "option.cursor":        "#ffffff bold",
+    "option.selected":      "#ffffff bold",
+    "option.unselected":    "#7a7a7a",
+    "option.emphasis":      "#ffffff bold",
+    "option.hint":          "#5a5a5a",
+
+    # === diff (赤抑え、緑→teal) ===
+    "diff.removed":         "bg:#3a1010 #ffffff",
+    "diff.added":           "bg:#0a3a3f #ffffff",
+    "diff.line_number":     "#5a5a5a",
+    "diff.marker.minus":    "#a85050",
+    "diff.marker.plus":     "#5a8a98",
+    "diff.summary":         "#7a7a7a",
+    "diff.context":         "#e0e0e0",
+
+    # === 状態 (薄紫) ===
+    "thinking":             "#b095d5",
+    "phase":                "#b095d5",
+    "recap":                "#7a7a7a italic",
+
+    # === 情報値 ===
+    "info.value":           "#5a8a98",
+    "info.version":         "#b095d5",
+    "status":               "#6a6a6a",
+    "status.value":         "#5a8a98",
+    "status.mode":          "#b095d5",
+
+    # === 入力 (背景指定削除、透明) ===
+    "input":                "#e0e0e0",
+
+    # === コピーモード ===
+    "copy_mode.cursor":     "bg:#ffffff #000000",
+    "copy_mode.selection":  "bg:#b095d5 #000000",
+})
+
+=== taskbar.py ===
+"""Windows タスクバーアイコン進捗制御 (ITaskbarList3 / ctypes)
+
+pywin32 不要。ctypes (組み込み) のみで ITaskbarList3 COM インターフェースを操作する。
+Windows 以外では全関数が no-op になり、エラーは起きない。
+"""
+import sys
+
+_AVAILABLE = sys.platform == "win32"
+_ctrl: "object | None" = None
+
+if _AVAILABLE:
+    try:
+        import ctypes
+        import ctypes.wintypes
+
+        _TBPF_NOPROGRESS    = 0x0
+        _TBPF_INDETERMINATE = 0x1
+        _TBPF_NORMAL        = 0x2
+        _TBPF_ERROR         = 0x4
+
+        class _GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", ctypes.c_ulong),
+                ("Data2", ctypes.c_ushort),
+                ("Data3", ctypes.c_ushort),
+                ("Data4", ctypes.c_ubyte * 8),
+            ]
+
+        def _make_guid(d1: int, d2: int, d3: int, d4: list[int]) -> "_GUID":
+            g = _GUID()
+            g.Data1, g.Data2, g.Data3 = d1, d2, d3
+            for i, b in enumerate(d4):
+                g.Data4[i] = b
+            return g
+
+        # ITaskbarList3
+        _CLSID_TaskbarList = _make_guid(
+            0x56FDF344, 0xFD6D, 0x11D0,
+            [0x95, 0x8A, 0x00, 0x60, 0x97, 0xC9, 0xA0, 0x90],
+        )
+        _IID_ITaskbarList3 = _make_guid(
+            0xEA1AFB91, 0x9E28, 0x4B86,
+            [0x90, 0xE9, 0x9E, 0x9F, 0x8A, 0x5E, 0xEF, 0xAF],
+        )
+
+        # vtable オフセット
+        _V_HrInit           = 3
+        _V_SetProgressValue = 9
+        _V_SetProgressState = 10
+
+        _ole32   = ctypes.windll.ole32
+        _kernel32 = ctypes.windll.kernel32
+
+        class _TaskbarCtrl:
+            """ITaskbarList3 の薄いラッパー。失敗時は全メソッドが no-op。"""
+
+            def __init__(self) -> None:
+                self._ptr: int | None = None
+                self._vtbl = None
+                self._hwnd: int = 0
+                self.ok: bool = False
+                try:
+                    _ole32.CoInitialize(None)
+                    p = ctypes.c_void_p()
+                    hr = _ole32.CoCreateInstance(
+                        ctypes.byref(_CLSID_TaskbarList),
+                        None,
+                        1,  # CLSCTX_INPROC_SERVER
+                        ctypes.byref(_IID_ITaskbarList3),
+                        ctypes.byref(p),
+                    )
+                    if hr != 0 or not p.value:
+                        return
+                    self._ptr = p.value
+                    vptr = ctypes.cast(self._ptr, ctypes.POINTER(ctypes.c_void_p))[0]
+                    self._vtbl = ctypes.cast(vptr, ctypes.POINTER(ctypes.c_void_p))
+                    # HrInit を呼んで有効化
+                    _FT = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p)
+                    _FT(self._vtbl[_V_HrInit])(self._ptr)
+                    # コンソール (Windows Terminal) の HWND を取得
+                    self._hwnd = _kernel32.GetConsoleWindow()
+                    self.ok = bool(self._hwnd)
+                except Exception:
+                    pass
+
+            def set_state(self, state: int) -> None:
+                if not self.ok:
+                    return
+                try:
+                    _FT = ctypes.WINFUNCTYPE(
+                        ctypes.HRESULT, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint
+                    )
+                    _FT(self._vtbl[_V_SetProgressState])(self._ptr, self._hwnd, state)
+                except Exception:
+                    pass
+
+            def set_value(self, value: int, total: int = 100) -> None:
+                if not self.ok:
+                    return
+                try:
+                    _FT = ctypes.WINFUNCTYPE(
+                        ctypes.HRESULT,
+                        ctypes.c_void_p, ctypes.c_void_p,
+                        ctypes.c_ulonglong, ctypes.c_ulonglong,
+                    )
+                    _FT(self._vtbl[_V_SetProgressValue])(self._ptr, self._hwnd, value, total)
+                except Exception:
+                    pass
+
+        _ctrl = _TaskbarCtrl()
+        _AVAILABLE = _ctrl.ok  # type: ignore[attr-defined]
+
+    except Exception:
+        _AVAILABLE = False
+
+
+def working() -> None:
+    """作業中: タスクバーアイコンをオレンジの不確定進捗に。"""
+    if _ctrl and _AVAILABLE:
+        _ctrl.set_state(_TBPF_INDETERMINATE)  # type: ignore[name-defined]
+
+
+def done() -> None:
+    """完了: タスクバーアイコンを緑 100% に。"""
+    if _ctrl and _AVAILABLE:
+        _ctrl.set_state(_TBPF_NORMAL)          # type: ignore[name-defined]
+        _ctrl.set_value(100)
+
+
+def error() -> None:
+    """エラー: タスクバーアイコンを赤に。"""
+    if _ctrl and _AVAILABLE:
+        _ctrl.set_state(_TBPF_ERROR)           # type: ignore[name-defined]
+        _ctrl.set_value(100)
+
+
+def clear() -> None:
+    """通常状態に戻す。"""
+    if _ctrl and _AVAILABLE:
+        _ctrl.set_state(_TBPF_NOPROGRESS)      # type: ignore[name-defined]
+
+=== textual_app.py ===
+# -*- coding: utf-8 -*-
+import sys, asyncio, json
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from textual.app import App, ComposeResult
+from textual.widgets import Input, RichLog, Static
+
+_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+
+BANNER = """
+ ██████╗  █████╗ ██████╗ ██╗  ██╗ ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+ ██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+ ██║  ██║███████║██████╔╝█████╔╝ ██║     ██║     ███████║██║   ██║██║  ██║█████╗
+ ██║  ██║██╔══██║██╔══██╗██╔═██╗ ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
+ ██████╔╝██║  ██║██║  ██║██║  ██╗╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝"""
+
+def _load_config():
+    try:
+        return json.loads(_CONFIG_PATH.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+
+class StatusBar(Static):
+    DEFAULT_CSS = """
+    StatusBar {
+        height: 1;
+        background: #0a0a0f;
+        color: #666677;
+        padding: 0 1;
+        border-top: solid #5c0030;
+    }
+    """
+    def update_status(self, text: str) -> None:
+        self.update(text)
+
+class ChatLog(RichLog):
+    DEFAULT_CSS = """
+    ChatLog {
+        height: 1fr;
+        background: #0a0a0f;
+        color: #e8e8f0;
+        border: none;
+        padding: 0 1;
+        scrollbar-gutter: stable;
+        scrollbar-color: #5c0030 #0a0a0f;
+    }
+    """
+
+class DarkClaudeApp(App):
+    CSS = """
+    Screen {
+        background: #0a0a0f;
+        layout: vertical;
+    }
+    #input-area {
+        height: 3;
+        border: solid #5c0030;
+        background: #0a0a0f;
+        color: #e8e8f0;
+        padding: 0 1;
+    }
+    #input-area:focus {
+        border: solid #cc0066;
+    }
+    """
+    BINDINGS = [
+        ("ctrl+c", "quit", "終了"),
+        ("ctrl+l", "clear_log", "クリア"),
+    ]
+
+    def __init__(self):
+        super().__init__()
+        self.config = _load_config()
+        self.model = self.config.get("model", "default")
+        self.messages = []
+        from clients import get_client
+        self.client = get_client(self.config)
+
+    def compose(self) -> ComposeResult:
+        yield ChatLog(id="chat-log", markup=True, highlight=True)
+        yield Input(placeholder="▸ ", id="input-area")
+        yield StatusBar("", id="status-bar")
+
+    def on_mount(self) -> None:
+        log = self.query_one(ChatLog)
+        log.write(f"[bold #ff0080]{BANNER}[/]")
+        log.write("")
+        log.write(f"  [#666677]version[/]    [#b266ff]v0.9-beta-final[/]")
+        log.write(f"  [#666677]model  [/]    [#00d9ff]{self.model}[/]")
+        log.write(f"  [#666677]server [/]    [#e8e8f0]{self.config.get('base_url','http://localhost:8080')}[/]")
+        log.write(f"  [#666677]phase  [/]    [#b266ff]Textual B[/]")
+        log.write("")
+        self._update_status_bar()
+        self.query_one(Input).focus()
+
+    def _update_status_bar(self, thinking: bool = False) -> None:
+        status = self.query_one(StatusBar)
+        if thinking:
+            status.update_status("[#ff0080]✻ 推論中...[/]")
+        else:
+            status.update_status(
+                "[#00ff88]●[/] llama-server  "
+                "[#666677]|[/]  [#666677]VRAM free:[/] [#00d9ff]1564 MiB[/]  "
+                "[#666677]|[/]  [#666677]model:[/] [#b266ff]Qwen3.6-35B[/]  "
+                "[#666677]|[/]  [#666677]ctx:[/] [#e8e8f0]--[/]"
+            )
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value.strip()
+        if not text:
+            return
+        event.input.clear()
+        if text.startswith("/"):
+            self._handle_command(text)
+        else:
+            log = self.query_one(ChatLog)
+            log.write(f"[bold #b266ff]▸[/] [#b266ff]{text}[/]")
+            self.run_worker(self._ai_turn(text), exclusive=True)
+
+    async def _ai_turn(self, user_input: str) -> None:
+        from tools.registry import TOOL_SCHEMAS, dispatch
+        log = self.query_one(ChatLog)
+        self._update_status_bar(thinking=True)
+        self.messages.append({"role": "user", "content": user_input})
+        tool_call_count = 0
+        try:
+            while True:
+                response = await asyncio.to_thread(
+                    self.client.chat, self.model, self.messages, TOOL_SCHEMAS,
+                )
+                msg = response.get("message", {})
+                self.messages.append(msg)
+                tool_calls = msg.get("tool_calls") or []
+                if not tool_calls:
+                    content = msg.get("content", "")
+                    log.write(f"[#e8e8f0]{content}[/]")
+                    log.write("")
+                    break
+                for tc in tool_calls:
+                    name = tc.get("function", {}).get("name", "")
+                    args = tc.get("function", {}).get("arguments", {})
+                    args_str = ", ".join(f"{k}={repr(v)[:40]}" for k, v in args.items())
+                    log.write(f"[#00d9ff]  ❯ {name}({args_str})[/]")
+                    result = await asyncio.to_thread(dispatch, name, args)
+                    log.write(f"[#888899]    {result[:200]}[/]")
+                    self.messages.append({"role": "tool", "content": result, "name": name})
+                    tool_call_count += 1
+        except Exception as e:
+            log.write(f"[bold #ff0040]ERROR:[/] {e}")
+        finally:
+            self._update_status_bar()
+
+    def _handle_command(self, cmd: str) -> None:
+        log = self.query_one(ChatLog)
+        if cmd in ("/exit", "/quit", "/bye"):
+            self.exit()
+        elif cmd == "/clear":
+            self.action_clear_log()
+            self.messages.clear()
+        elif cmd == "/help":
+            log.write("[#666677]  /exit /clear /help[/]")
+        else:
+            log.write(f"[#ff0040]  unknown:[/] {cmd}")
+
+    def action_clear_log(self) -> None:
+        self.query_one(ChatLog).clear()
+
+def run() -> None:
+    DarkClaudeApp().run()
+
+if __name__ == "__main__":
+    run()
+

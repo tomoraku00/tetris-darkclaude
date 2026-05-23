@@ -26,6 +26,7 @@ _messages = []
 _client = None
 _current_session_id = None
 plan_mode = False
+original_task = None
 _pending_approvals = {}
 _approval_decisions = {}
 _always_allow = set()
@@ -274,6 +275,9 @@ async def chat(req: ChatRequest):
         if skills_ctx and _messages and _messages[0]["role"] == "system":
             _messages[0] = {"role":"system","content": _get_system_prompt(skills_ctx)}
 
+        global original_task
+        if original_task is None:
+            original_task = req.message
         user_msg = {"role": "user", "content": req.message}
         _messages.append(user_msg)
         _save_msg(_current_session_id, user_msg)
@@ -290,6 +294,8 @@ async def chat(req: ChatRequest):
                 yield "data: [DONE]\n\n"
                 return
             sys_prompt = _inject_workdir(_messages, _get_system_prompt())
+            if original_task:
+                sys_prompt += f"\n\n## Original Task\nYou were asked to: {original_task}\nStay focused on this. Do not drift to unrelated files or tasks."
             if plan_mode:
                 sys_prompt += "\n\n## Plan Mode\nツールを一切使わず、実行計画のみを日本語で番号付きリストで出力すること。最後に '計画を確認しました。/go で実行します。' と書くこと。"
             trimmed = _trim_messages(_messages)

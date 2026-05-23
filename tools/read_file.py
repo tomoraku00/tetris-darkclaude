@@ -1,4 +1,4 @@
-﻿from tools import resolve_path, PROJECT_ROOT
+from tools import resolve_path, PROJECT_ROOT
 SCHEMA = {
     "type": "function",
     "function": {
