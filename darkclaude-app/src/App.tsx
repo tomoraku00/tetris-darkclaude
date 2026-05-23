@@ -21,7 +21,7 @@ const DOTS = ["", ".", "..", "..."]
 const SPINNERS = ["・", "÷", "✶", "✽"]
 const THINKING_VERBS = ["Brewing","Cogitating","Spelunking","Incubating","Pondering","Simmering","Churning","Sauteing","Ruminating","思索中","解析中","演算中","推論中","分析中"]
 
-type MsgType = "user"|"assistant"|"tool_desc"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"
+type MsgType = "user"|"assistant"|"tool_desc"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"|"recap"
 interface Msg { id:number; type:MsgType; text:string; name?:string; isError?:boolean; elapsed?:number; label?:string; valueClass?:string }
 interface StatusInfo { model:string; vram_free:number; vram_used:number; base_url:string }
 interface ApprovalData { id:string; title:string; command:string; emphasis:string }
@@ -46,6 +46,7 @@ function MsgLine({msg}:{msg:Msg}) {
     case "error": return <div className="msg-error">ERROR: {msg.text}</div>
     case "info": return <div className="msg-info-plain">{msg.text}</div>
     case "separator": return <div className="msg-separator">{msg.text}</div>
+    case "recap": return <div className="msg-recap">{msg.text}</div>
     case "code": return <div className="msg-code">{msg.text}</div>
     case "diff_add": return <div className="msg-diff-add">{msg.text}</div>
     case "diff_rm": return <div className="msg-diff-rm">{msg.text}</div>
@@ -143,7 +144,10 @@ export default function App() {
 
 
   useEffect(()=>{
-    if(!thinking){setThinkingElapsed(0);setThinkingTokens(0);setThinkingAction("");return}
+    if(!thinking){
+      if(thinkingElapsed>0) addMsg(mk("recap",`✳ ${["Cogitated","Worked","Churned","Brewed","Simmered","Incubated","Ruminated"][Math.floor(Math.random()*7)]} for ${thinkingElapsed}s`))
+      addMsg(mk("info"," "))
+      setThinkingElapsed(0);setThinkingTokens(0);setThinkingAction("");return}
     const timer=setInterval(()=>setThinkingElapsed(s=>s+1),1000)
     return ()=>clearInterval(timer)
   },[thinking])
