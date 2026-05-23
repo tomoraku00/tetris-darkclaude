@@ -68,7 +68,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .sep-line{height:2px;background:#5a5a5a}
 .input-row{display:flex;align-items:flex-start;padding:2px 18px;background:var(--bg);min-height:20px}
 .input-row .prompt-mark{color:var(--prompt);font-weight:bold;flex-shrink:0;user-select:none}
-.chat-input{flex:1;background:transparent;border:none;outline:none;color:var(--output);font-family:inherit;font-size:inherit;line-height:inherit;caret-color:var(--prompt)}
+.chat-input{resize:none;flex:1;background:transparent;border:none;outline:none;color:var(--output);font-family:inherit;font-size:inherit;line-height:inherit;caret-color:var(--prompt)}
 .chat-input:disabled{opacity:0.5}
 
 /* Status bar */
