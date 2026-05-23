@@ -52,7 +52,7 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .msg-error{color:var(--tool-err)}
 .msg-info{color:var(--muted);white-space:pre;display:flex}
 .msg-info-plain{color:var(--muted);white-space:pre;padding-left:40px}
-.msg-separator{color:var(--sep);white-space:pre;user-select:none}
+.msg-separator{border-top:1px solid var(--sep);width:100%;height:0;overflow:hidden;margin:4px 0;user-select:none;font-size:0}
 .msg-code{background:var(--code-bg);color:var(--output);white-space:pre;font-family:inherit;padding:0 4px}
 .msg-diff-add{background:var(--diff-add-bg);color:#ffffff;white-space:pre}
 .msg-diff-rm{background:var(--diff-rm-bg);color:#ffffff;white-space:pre}
