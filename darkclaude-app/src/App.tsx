@@ -287,7 +287,7 @@ export default function App() {
             <span className="prompt-mark">{">"}  </span>
             <textarea ref={inputRef as any} className="chat-input" value={input}
               onChange={e=>{setInput(e.target.value);const t=e.target;t.style.height="auto";t.style.height=t.scrollHeight+"px"}}
-              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(input.trim())send()}}}
               autoFocus spellCheck={false} rows={1}/>
           </div>
           <div className="sep-line"/>
