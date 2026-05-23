@@ -264,7 +264,7 @@ export default function App() {
         }
         <div ref={bottomRef}/>
       </div>
-      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">✳</span> {(thinkingTxt||"Thinking").replace(/\.+$/, "")}{DOTS[dotsIdx]}</> }</div>
+      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Thinking").replace(/\.+$/, "")}{DOTS[dotsIdx]}</> }</div>
       {approval&&<ApprovalDialog data={approval} onDecide={handleApproval}/>}
       {!approval&&(
         <div className="input-wrap">

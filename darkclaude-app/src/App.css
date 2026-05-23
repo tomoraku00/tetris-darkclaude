@@ -96,5 +96,5 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 
 .thinking-spacer{height:1.5em}
 .thinking-zone{flex-shrink:0;height:1.5em;padding:0 12px;color:var(--thinking);font-family:inherit;font-size:inherit}
-.thinking-spinner{display:inline-block;animation:spin-star 2s linear infinite}
-@keyframes spin-star{to{transform:rotate(360deg)}}
+
+
