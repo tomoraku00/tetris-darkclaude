@@ -1,5 +1,4 @@
-﻿from pathlib import Path
-PROJECT_ROOT = Path.cwd().resolve()
+﻿from tools import resolve_path, PROJECT_ROOT
 SCHEMA = {
     "type": "function",
     "function": {
