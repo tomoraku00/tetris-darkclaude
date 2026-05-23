@@ -7,9 +7,9 @@
   --sep:#3a3a3a;
   --output:#e0e0e0;
   --code-bg:#1a1a1a;
-  --user-bg:#1a1a1a;
+  --user-bg:#707070;
   --prompt:#ffffff;
-  --user-text:#7a7a7a;
+  --user-text:#1a1a1a;
   --tool-call:#5a8a98;
   --tool-ok:#5a8a98;
   --tool-err:#a85050;
@@ -44,9 +44,10 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 .msg-user .user-text{color:var(--user-text);letter-spacing:0;white-space:pre-wrap;word-break:break-word}
 .msg-assistant{color:#ffffff;white-space:pre-wrap;word-break:break-word;padding-left:18px;letter-spacing:0;margin-top:16px;margin-bottom:16px}
 .msg-thinking{color:var(--thinking);padding-left:40px}
-.msg-tool-call{color:var(--tool-call);margin-top:8px;margin-bottom:0}
-.msg-tool-ok{color:var(--tool-ok);margin-bottom:0}
-.msg-tool-err{color:var(--tool-err);margin-bottom:0}
+.msg-tool-desc{color:var(--muted);margin-top:8px;margin-bottom:0}
+.msg-tool-call{color:var(--muted);margin-top:0;margin-bottom:0;padding-left:18px}
+.msg-tool-ok{color:var(--muted);margin-bottom:0;padding-left:18px}
+.msg-tool-err{color:var(--tool-err);margin-bottom:0;padding-left:18px}
 .msg-elapsed{color:var(--muted)}
 .msg-error{color:var(--tool-err)}
 .msg-info{color:var(--muted);white-space:pre;display:flex}
@@ -92,9 +93,10 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 
 .input-row .prompt-mark{color:#7a7a7a;font-weight:normal;margin-right:6px}
 .thinking-indicator{color:var(--thinking);padding:4px 8px 8px 8px;font-family:inherit;font-size:inherit}
-.thinking-spinner{display:inline-block}
+.thinking-spinner{display:inline-block;min-width:1.5em;text-align:center}
 
 .thinking-spacer{height:1.5em}
 .thinking-zone{flex-shrink:0;height:1.5em;padding:0 12px;color:var(--thinking);font-family:inherit;font-size:inherit}
 
 
+.tc-bullet{color:#ffffff}.tc-name{color:var(--muted)}.tc-args{color:var(--muted)}.tc-tree{color:var(--muted)}

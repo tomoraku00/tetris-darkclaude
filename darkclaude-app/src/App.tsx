@@ -18,10 +18,10 @@ const MASCOT = `   █        █
    █ █    █ █   `
 
 const DOTS = ["", ".", "..", "..."]
-const SPINNERS = ["·", "÷", "✶", "*"]
+const SPINNERS = ["・", "÷", "✶", "✽"]
 const THINKING_VERBS = ["Thinking","Cooking","Brewing","Cogitating","Crunching","Pondering","Simmering","思考中","考え中","推論中","解析中","演算中","思索中","分析中"]
 
-type MsgType = "user"|"assistant"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"
+type MsgType = "user"|"assistant"|"tool_desc"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"
 interface Msg { id:number; type:MsgType; text:string; name?:string; isError?:boolean; elapsed?:number; label?:string; valueClass?:string }
 interface StatusInfo { model:string; vram_free:number; vram_used:number; base_url:string }
 interface ApprovalData { id:string; title:string; command:string; emphasis:string }
@@ -40,8 +40,9 @@ function MsgLine({msg}:{msg:Msg}) {
   switch(msg.type){
     case "user": return <div className="msg-user"><span className="prompt-mark">{">"}  </span><span className="user-text">{msg.text}</span></div>
     case "thinking": return <div className="msg-thinking">✻ {msg.text}</div>
-    case "tool_call": return <div className="msg-tool-call">⏺ {msg.name}({msg.text})</div>
-    case "tool_result": return <div className={msg.isError?"msg-tool-err":"msg-tool-ok"}>  ⎿ {msg.text}{msg.elapsed!==undefined&&<span className="msg-elapsed">  ({msg.elapsed.toFixed(1)}s)</span>}</div>
+    case "tool_desc": return <div className="msg-tool-desc"><span className="tc-bullet">●</span> {msg.text}</div>
+    case "tool_call": return <div className="msg-tool-call"><span className="tc-name">{msg.name}</span><span className="tc-args">({msg.text})</span></div>
+    case "tool_result": return <div className={msg.isError?"msg-tool-err":"msg-tool-ok"}><span className="tc-tree">┗ </span>{msg.text}{msg.elapsed!==undefined&&<span className="msg-elapsed">  ({msg.elapsed.toFixed(1)}s)</span>}</div>
     case "error": return <div className="msg-error">ERROR: {msg.text}</div>
     case "info": return <div className="msg-info-plain">{msg.text}</div>
     case "separator": return <div className="msg-separator">{msg.text}</div>
@@ -140,9 +141,13 @@ export default function App() {
 
   useEffect(()=>{
     if(!thinking) return
-    const id=setInterval(()=>setSpinIdx(i=>(i+1)%SPINNERS.length),100)
+    const DELAYS=[300,300,300,600]
+    let idx=0
+    let tid:ReturnType<typeof setTimeout>
+    const tick=()=>{idx=(idx+1)%SPINNERS.length;setSpinIdx(idx);tid=setTimeout(tick,DELAYS[idx])}
+    tid=setTimeout(tick,DELAYS[0])
     const id2=setInterval(()=>setDotsIdx(i=>(i+1)%DOTS.length),400)
-    return ()=>{clearInterval(id);clearInterval(id2)}
+    return ()=>{clearTimeout(tid);clearInterval(id2)}
   },[thinking])
 
   const handleStop = async () => {
@@ -207,6 +212,8 @@ export default function App() {
               addMsg(mk(inCode?"code":"assistant", l))
             }
             addMsg(mk("info",""))
+          } else if(ev.type==="tool_desc"){
+            addMsg(mk("tool_desc",ev.text||""))
           } else if(ev.type==="tool_call"){
             const key=ev.args?.path??ev.args?.command??ev.args?.pattern??ev.args?.query??""
             const short=key.length>47?key.slice(0,44)+"...":key

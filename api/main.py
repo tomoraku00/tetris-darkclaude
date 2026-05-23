@@ -305,6 +305,19 @@ async def chat(req: ChatRequest):
                 yield f"data: {json.dumps({'type':'text','content':msg.get('content','')})}\n\n"
                 break
 
+            # ツール名から説明文を自動生成
+            TOOL_DESC = {
+                'write_file': 'ファイルを作成します',
+                'read_file': 'ファイルを読み込みます',
+                'glob': 'ファイルを検索します',
+                'bash': 'コマンドを実行します',
+                'str_replace': 'ファイルを編集します',
+                'codegraph_explore': 'コードを解析します',
+            }
+            if tool_calls:
+                first_name = tool_calls[0].get('function', {}).get('name', '')
+                desc = TOOL_DESC.get(first_name, f'{first_name} を実行します')
+                yield f"data: {json.dumps({'type':'tool_desc','text':desc})}\n\n"
             for tc in tool_calls:
                 name = tc.get("function",{}).get("name","")
                 args = tc.get("function",{}).get("arguments",{})

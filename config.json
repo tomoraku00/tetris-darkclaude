@@ -14,5 +14,5 @@
   "fallback_model": "gemini-2.0-flash",
   "fallback_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
   "fallback_api_key": "AIzaSyCN_SxDuO-jWYA9E61i6S0wN4bu7gPZswY",
-  "approval_timeout_sec": 300
+  "approval_timeout_sec": 999999
 }

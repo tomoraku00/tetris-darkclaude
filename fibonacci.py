@@ -1,26 +1,20 @@
-def fibonacci(n: int) -> list[int]:
+def fibonacci(n):
     """
-    フィボナッチ数列を返す関数
+    フィボナッチ数列の第n項を返す
     
     Args:
-        n: 生成する数列の項数
+        n: 非負整数
         
     Returns:
-        フィボナッチ数列のリスト
+        フィボナッチ数列の第n項
     """
-    if n <= 0:
-        return []
-    elif n == 1:
-        return [0]
+    if n < 0:
+        raise ValueError("nは非負整数である必要があります")
+    if n <= 1:
+        return n
     
-    sequence = [0, 1]
-    while len(sequence) < n:
-        sequence.append(sequence[-1] + sequence[-2])
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
     
-    return sequence
-
-
-# テスト実行
-if __name__ == "__main__":
-    print("最初の10項のフィボナッチ数列:")
-    print(fibonacci(10))
+    return b
