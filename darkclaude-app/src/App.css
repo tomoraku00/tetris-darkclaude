@@ -100,3 +100,4 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 
 
 .tc-bullet{color:#ffffff}.tc-name{color:var(--muted)}.tc-args{color:var(--muted)}.tc-tree{color:var(--muted)}
+.thinking-meta{color:var(--muted);font-size:0.9em}

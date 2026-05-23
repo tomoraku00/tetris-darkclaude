@@ -19,7 +19,7 @@ const MASCOT = `   █        █
 
 const DOTS = ["", ".", "..", "..."]
 const SPINNERS = ["・", "÷", "✶", "✽"]
-const THINKING_VERBS = ["Thinking","Cooking","Brewing","Cogitating","Crunching","Pondering","Simmering","思考中","考え中","推論中","解析中","演算中","思索中","分析中"]
+const THINKING_VERBS = ["Brewing","Cogitating","Spelunking","Incubating","Pondering","Simmering","Churning","Sauteing","Ruminating","思索中","解析中","演算中","推論中","分析中"]
 
 type MsgType = "user"|"assistant"|"tool_desc"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"
 interface Msg { id:number; type:MsgType; text:string; name?:string; isError?:boolean; elapsed?:number; label?:string; valueClass?:string }
@@ -92,6 +92,8 @@ export default function App() {
   const [input,setInput] = useState("")
   const [thinking,setThinking] = useState(false)
   const [spinIdx,setSpinIdx] = useState(0)
+  const [thinkingElapsed,setThinkingElapsed] = useState(0)
+  const [thinkingTokens,setThinkingTokens] = useState(0)
   const [dotsIdx,setDotsIdx] = useState(0)
   const [thinkingTxt,setThinkingTxt] = useState("")
   const [status,setStatus] = useState<StatusInfo>({model:"qwen3.6",vram_free:0,vram_used:0,base_url:""})
@@ -139,6 +141,11 @@ export default function App() {
   const m=Math.floor(elapsed/60), s=elapsed%60
 
 
+  useEffect(()=>{
+    if(!thinking){setThinkingElapsed(0);setThinkingTokens(0);return}
+    const timer=setInterval(()=>setThinkingElapsed(s=>s+1),1000)
+    return ()=>clearInterval(timer)
+  },[thinking])
   useEffect(()=>{
     if(!thinking) return
     const DELAYS=[300,300,300,600]
@@ -271,7 +278,7 @@ export default function App() {
         }
         <div ref={bottomRef}/>
       </div>
-      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Thinking").replace(/\.+$/, "")}{DOTS[dotsIdx]}</> }</div>
+      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">{SPINNERS[spinIdx]}</span> {(thinkingTxt||"Brewing").replace(/\.+$/, "")}<span className="thinking-meta"> ({thinkingElapsed}s{thinkingTokens>0?` · ↓ ${thinkingTokens} tokens`:""})</span></> }</div>
       {approval&&<ApprovalDialog data={approval} onDecide={handleApproval}/>}
       {!approval&&(
         <div className="input-wrap">
