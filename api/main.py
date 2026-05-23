@@ -254,12 +254,20 @@ def list_sessions():
             "current": _current_session_id}
 
 
+@app.post("/stop")
+async def stop_generation():
+    global _cancel_requested
+    _cancel_requested = True
+    return {"status": "ok"}
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
     from tools.registry import TOOL_SCHEMAS, dispatch
 
     async def generate():
-        global _messages
+        global _messages, _cancel_requested
+        _cancel_requested = False
 
         # Skills injection
         skills_ctx = _skills_context(req.message)
@@ -276,6 +284,11 @@ async def chat(req: ChatRequest):
         used_fallback = False
         error_count = 0
         while True:
+            if _cancel_requested:
+                _cancel_requested = False
+                yield "data: {\"type\":\"text\",\"content\":\"[中断しました]\"}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             sys_prompt = _inject_workdir(_messages, _get_system_prompt())
             if plan_mode:
                 sys_prompt += "\n\n## Plan Mode\nツールを一切使わず、実行計画のみを日本語で番号付きリストで出力すること。最後に '計画を確認しました。/go で実行します。' と書くこと。"

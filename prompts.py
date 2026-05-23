@@ -222,8 +222,8 @@ SYSTEM_PROMPT = (
     "## 作業ディレクトリとファイルパスの規則\n"
     "ユーザーが '作業ディレクトリ: C:\\path\\to\\project' と指定した場合:\n"
     "- 相対パス(src/lib/file.py)は必ず絶対パスに変換して read_file を使う\n"
-    "- 例: 作業ディレクトリ C:\\dev\\ai-coach + src/lib/file.py\n"
-    "  → read_file(C:/dev/ai-coach/src/lib/file.py)\n"
+    "- 例: 作業ディレクトリ C:\\Users\\tomo_rrow\\Documents\\nanoclaude + src/lib/file.py\n"
+    "  → read_file(C:/Users/tomo_rrow/Documents/nanoclaude/src/lib/file.py)\n"
     "- glob や相対パスで探す前に、絶対パスで直接 read_file を試みること\n"
     "- nanoclaude プロジェクト内の glob は外部プロジェクトには使えない"
 )

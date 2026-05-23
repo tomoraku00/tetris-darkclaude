@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import "./App.css"
 
 const API = "http://127.0.0.1:8765"
@@ -92,6 +92,7 @@ export default function App() {
   const [status,setStatus] = useState<StatusInfo>({model:"qwen3.6",vram_free:0,vram_used:0,base_url:""})
   const [elapsed,setElapsed] = useState(0)
   const [approval,setApproval] = useState<ApprovalData|null>(null)
+  const abortCtrl = useRef<AbortController|null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const startRef = useRef(Date.now())
@@ -132,6 +133,13 @@ export default function App() {
 
   const m=Math.floor(elapsed/60), s=elapsed%60
 
+
+  const handleStop = async () => {
+    try { await fetch(`${API}/stop`, {method:"POST"}) } catch(e) {}
+    abortCtrl.current?.abort()
+    setThinking(false)
+    setThinkingTxt("")
+  }
   const send = async () => {
     const text=input.trim()
     if(!text||thinking) return
@@ -157,7 +165,8 @@ export default function App() {
     setThinking(true); setThinkingTxt(`✻ ${verb}`)
 
     try {
-      const res=await fetch(`${API}/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text})})
+      abortCtrl.current = new AbortController()
+      const res=await fetch(`${API}/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text}),signal:abortCtrl.current.signal})
       const reader=res.body!.getReader(); const dec=new TextDecoder(); let buf=""
       setMsgs(p=>p.filter(m=>m.id!==thinkId)); setThinkingTxt("")
 
@@ -223,6 +232,7 @@ export default function App() {
               onChange={e=>{setInput(e.target.value);const t=e.target;t.style.height="auto";t.style.height=t.scrollHeight+"px"}}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}
               autoFocus disabled={thinking} spellCheck={false} rows={1}/>
+            {thinking && <button className="stop-btn" onClick={handleStop}>■</button>}
           </div>
           <div className="sep-line"/>
         </div>
