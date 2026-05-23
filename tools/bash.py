@@ -1,6 +1,7 @@
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path.cwd().resolve()
@@ -81,3 +82,47 @@ def run(command: str, timeout: int = 120) -> str:
         return f"ERROR: exit code {proc.returncode}\n{output}" if output else f"ERROR: exit code {proc.returncode}"
 
     return output if output.strip() else "(no output)"
+
+
+def run_timed(command: str, timeout: int = 120) -> dict:
+    for pattern in _BLOCKED:
+        if pattern.search(command):
+            return {"output": f"ERROR: blocked command: {pattern.pattern}", "elapsed_sec": 0}
+
+    timeout = max(1, min(timeout, 600))
+
+    start = time.time()
+    try:
+        proc = subprocess.run(
+            [_SHELL, "-NonInteractive", "-Command", _UTF8_PREAMBLE + command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            cwd=str(PROJECT_ROOT),
+        )
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - start
+        return {
+            "output": (
+                f"ERROR: timeout after {timeout}s. "
+                "If the command requires more time, retry with a larger timeout argument (max 600)."
+            ),
+            "elapsed_sec": round(elapsed, 3),
+        }
+    except Exception as e:
+        elapsed = time.time() - start
+        return {"output": f"ERROR: {e}", "elapsed_sec": round(elapsed, 3)}
+
+    output = proc.stdout + proc.stderr
+    if len(output) > _MAX_OUTPUT:
+        output = output[:_MAX_OUTPUT] + "\n...[truncated]"
+
+    elapsed = time.time() - start
+    result_output = output if output.strip() else "(no output)"
+
+    if proc.returncode != 0:
+        result_output = f"ERROR: exit code {proc.returncode}\n{output}" if output else f"ERROR: exit code {proc.returncode}"
+
+    return {"output": result_output, "elapsed_sec": round(elapsed, 3)}

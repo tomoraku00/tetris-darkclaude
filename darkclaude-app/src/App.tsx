@@ -238,7 +238,6 @@ export default function App() {
               onChange={e=>{setInput(e.target.value);const t=e.target;t.style.height="auto";t.style.height=t.scrollHeight+"px"}}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}
               autoFocus spellCheck={false} rows={1}/>
-            {thinking && <button className="stop-btn" onClick={handleStop}>■</button>}
           </div>
           <div className="sep-line"/>
         </div>
