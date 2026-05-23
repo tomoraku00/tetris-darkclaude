@@ -301,7 +301,15 @@ async def chat(req: ChatRequest):
             trimmed = _trim_messages(_messages)
             trimmed = [m for m in trimmed if m.get("role") != "system"]
             trimmed = [{"role": "system", "content": sys_prompt}] + trimmed
-            response = await asyncio.to_thread(client.chat, model, trimmed, TOOL_SCHEMAS)
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(client.chat, model, trimmed, TOOL_SCHEMAS),
+                    timeout=120
+                )
+            except asyncio.TimeoutError:
+                import json as _j
+                yield "data: " + _j.dumps({"type":"error","content":"[timeout] No response in 120s."}) + "\\n\\n"
+                break
             msg = response.get("message", {})
             _messages.append(msg)
             _save_msg(_current_session_id, msg)
@@ -311,6 +319,14 @@ async def chat(req: ChatRequest):
             if total_tokens > 0:
                 yield f"data: {json.dumps({'type':'token_count','tokens':total_tokens})}\n\n"
             tool_calls = msg.get("tool_calls") or []
+            if not hasattr(generate, "_tool_hist"):
+                generate._tool_hist = []
+            if tool_calls:
+                sig = tool_calls[0].get("function",{}).get("name","") + str(tool_calls[0].get("function",{}).get("arguments",{}))[:80]
+                generate._tool_hist.append(sig)
+                if len(generate._tool_hist) >= 3 and len(set(generate._tool_hist[-3:])) == 1:
+                    _messages.append({"role":"tool","content":"[hint] Same op x3. Try different approach.","name":"system"})
+                    generate._tool_hist.clear()
             if not tool_calls:
                 yield f"data: {json.dumps({'type':'text','content':msg.get('content','')})}\n\n"
                 break
