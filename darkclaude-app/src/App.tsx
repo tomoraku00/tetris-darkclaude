@@ -18,7 +18,7 @@ const MASCOT = `   █        █
    █ █    █ █   `
 
 const DOTS = ["", ".", "..", "..."]
-const SPINNERS = ["⣾","⣽","⣻","⢿","⡿","⣟","⣯","⣷"]
+const SPINNERS = ["·", "÷", "✶", "*"]
 const THINKING_VERBS = ["Thinking","Cooking","Brewing","Cogitating","Crunching","Pondering","Simmering","思考中","考え中","推論中","解析中","演算中","思索中","分析中"]
 
 type MsgType = "user"|"assistant"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"
