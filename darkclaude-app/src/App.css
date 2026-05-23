@@ -92,5 +92,9 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 
 .input-row .prompt-mark{color:#7a7a7a;font-weight:normal;margin-right:6px}
 .thinking-indicator{color:var(--thinking);padding:4px 8px 8px 8px;font-family:inherit;font-size:inherit}
-.thinking-spinner{display:inline-block;animation:spin-thinking 0.8s steps(8) infinite}
-@keyframes spin-thinking{to{content:'⣿';transform:rotate(360deg)}}
+.thinking-spinner{display:inline-block}
+
+.thinking-spacer{height:1.5em}
+.thinking-zone{flex-shrink:0;height:1.5em;padding:0 12px;color:var(--thinking);font-family:inherit;font-size:inherit}
+.thinking-spinner{display:inline-block;animation:spin-star 2s linear infinite}
+@keyframes spin-star{to{transform:rotate(360deg)}}

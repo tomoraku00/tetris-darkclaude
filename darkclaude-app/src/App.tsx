@@ -17,6 +17,8 @@ const MASCOT = `   █        █
   ████████████
    █ █    █ █   `
 
+const DOTS = ["", ".", "..", "..."]
+const SPINNERS = ["⣾","⣽","⣻","⢿","⡿","⣟","⣯","⣷"]
 const THINKING_VERBS = ["Thinking","Cooking","Brewing","Cogitating","Crunching","Pondering","Simmering","思考中","考え中","推論中","解析中","演算中","思索中","分析中"]
 
 type MsgType = "user"|"assistant"|"tool_call"|"tool_result"|"error"|"info_kv"|"info"|"thinking"|"code"|"diff_add"|"diff_rm"|"diff_ctx"|"separator"
@@ -88,6 +90,8 @@ export default function App() {
   const [msgs,setMsgs] = useState<Msg[]>([])
   const [input,setInput] = useState("")
   const [thinking,setThinking] = useState(false)
+  const [spinIdx,setSpinIdx] = useState(0)
+  const [dotsIdx,setDotsIdx] = useState(0)
   const [thinkingTxt,setThinkingTxt] = useState("")
   const [status,setStatus] = useState<StatusInfo>({model:"qwen3.6",vram_free:0,vram_used:0,base_url:""})
   const [elapsed,setElapsed] = useState(0)
@@ -129,10 +133,17 @@ export default function App() {
     return ()=>clearInterval(t)
   },[])
 
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"auto"}) },[msgs])
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"auto"}) },[msgs,thinking])
 
   const m=Math.floor(elapsed/60), s=elapsed%60
 
+
+  useEffect(()=>{
+    if(!thinking) return
+    const id=setInterval(()=>setSpinIdx(i=>(i+1)%SPINNERS.length),100)
+    const id2=setInterval(()=>setDotsIdx(i=>(i+1)%DOTS.length),400)
+    return ()=>{clearInterval(id);clearInterval(id2)}
+  },[thinking])
 
   const handleStop = async () => {
     try { await fetch(`${API}/stop`, {method:"POST"}) } catch(e) {}
@@ -248,12 +259,15 @@ export default function App() {
           <pre className="banner-mascot">{MASCOT}</pre>
         </div>
         {msgs.map(m=><MsgLine key={m.id} msg={m}/>)}
+        {thinking&&<>
+        </>
+        }
         <div ref={bottomRef}/>
       </div>
+      <div className="thinking-zone">{thinking&&<><span className="thinking-spinner">✳</span> {(thinkingTxt||"Thinking").replace(/\.+$/, "")}{DOTS[dotsIdx]}</> }</div>
       {approval&&<ApprovalDialog data={approval} onDecide={handleApproval}/>}
       {!approval&&(
         <div className="input-wrap">
-          {thinking&&<div className="thinking-indicator"><span className="thinking-spinner">⣾</span> {thinkingTxt||"Thinking..."}</div>}
           <div className="sep-line"/>
           <div className="input-row">
             <span className="prompt-mark">{">"}  </span>
