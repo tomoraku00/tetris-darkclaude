@@ -308,6 +308,14 @@ async def chat(req: ChatRequest):
             for tc in tool_calls:
                 name = tc.get("function",{}).get("name","")
                 args = tc.get("function",{}).get("arguments",{})
+                if isinstance(args, dict) and args.get("__parse_error__"):
+                    yield f"data: {json.dumps({'type':'tool_result','name':name,'result':'ERROR: 引数のJSONパースに失敗しました。引数を正しく指定して再試行してください。'})}\n\n"
+                    _messages.append({"role":"tool","content":"ERROR: 引数のJSONパースに失敗しました。引数を正しく指定して再試行してください。","name":name})
+                    continue
+                if isinstance(args, dict) and args.get("__parse_error__"):
+                    yield f"data: {json.dumps({'type':'tool_result','name':name,'result':'ERROR: 引数のJSONパースに失敗しました。引数を正しく指定して再試行してください。'})}\n\n"
+                    _messages.append({"role":"tool","content":"ERROR: 引数のJSONパースに失敗しました。引数を正しく指定して再試行してください。","name":name})
+                    continue
                 yield f"data: {json.dumps({'type':'tool_call','name':name,'args':args})}\n\n"
 
                 # 承認チェック
@@ -327,7 +335,8 @@ async def chat(req: ChatRequest):
                     }
                     yield f"data: {json.dumps(approval_event)}\n\n"
                     try:
-                        await asyncio.wait_for(ev.wait(), timeout=120)
+                        approval_timeout = _config.get("approval_timeout_sec", 300)
+                    await asyncio.wait_for(ev.wait(), timeout=approval_timeout)
                     except asyncio.TimeoutError:
                         del _pending_approvals[aid]
                         result = "USER_DENIED: timeout"
