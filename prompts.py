@@ -116,6 +116,29 @@ str_replace(src/api.py, "def get_user", "def fetch_user")
 str_replace(src/handlers.py, "get_user(", "fetch_user(")
 2 ファイル更新完了。
 
+## 例4: 新規ファイル作成
+ユーザー: 	imer.py を作成してください。start/stop/reset メソッドを持つクラス
+応答:
+write_file(C:/Users/tomo_rrow/Documents/nanoclaude/timer.py, [実装])
+timer.py 作成完了。
+
+## 例5: ファイルパスが不明な場合
+ユーザー: ash.py に関数を追加してください
+応答:
+glob(**/bash.py) → tools/bash.py
+read_file(C:/Users/tomo_rrow/Documents/nanoclaude/tools/bash.py)
+str_replace(C:/Users/tomo_rrow/Documents/nanoclaude/tools/bash.py, ...)
+追加完了。
+
+## 例6: 分析したら必ず実行まで完了する
+ユーザー: compare.py のバグを修正してください
+応答:
+read_file(C:/Users/tomo_rrow/Documents/nanoclaude/benchmarks/compare.py)
+[KeyError リスク確認]
+str_replace(compare.py, bt['completed'], bt.get('completed', 0))
+修正完了。← 分析で止まらず必ず修正まで実行する
+
+
 # 禁止事項
 - 長い前置きやプレアンブル
 - 英語での応答（技術用語は OK）
