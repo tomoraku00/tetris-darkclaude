@@ -28,3 +28,5 @@ benchmarks/reports/*.json
 !benchmarks/reports/v0.9-beta.json
 
 .darkclaude/sessions.db
+
+fix_*.py
