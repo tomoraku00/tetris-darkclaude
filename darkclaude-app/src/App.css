@@ -65,14 +65,14 @@ html,body{background:var(--bg);color:var(--output);font-family:'Cascadia Mono','
 
 /* Input area */
 .input-wrap{flex-shrink:0;background:var(--bg)}
-.sep-line{height:0px}
+.sep-line{height:1px;background:#5a5a5a}
 .input-row{display:flex;align-items:flex-start;padding:2px 18px;background:var(--bg);min-height:20px}
 .input-row .prompt-mark{color:var(--prompt);font-weight:bold;flex-shrink:0;user-select:none}
 .chat-input{resize:none;flex:1;background:transparent;border:none;outline:none;color:var(--output);font-family:inherit;font-size:inherit;line-height:inherit;caret-color:var(--prompt)}
 .chat-input:disabled{opacity:0.5}
 
 /* Status bar */
-.status-bar{display:flex;align-items:center;background:var(--bg);padding:4px 6px;height:60px;flex-shrink:0;font-size:12px;border-top:2px solid #5a5a5a}
+.status-bar{display:flex;align-items:center;background:var(--bg);padding:4px 6px;height:60px;flex-shrink:0;font-size:12px;}
 .st-val{color:var(--st-val)}
 .st-muted{color:var(--muted)}
 .st-mode{color:var(--st-mode)}
